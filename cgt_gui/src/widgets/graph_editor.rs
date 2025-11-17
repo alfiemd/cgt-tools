@@ -29,18 +29,24 @@ imgui_enum! {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum VertexColor {
-    Blue,
-    Red,
-    None,
+enum Edit {
+    DragVertex,
+    ColorVertex(VertexColor),
+    AddVertex,
+    DeleteVertex,
+    AddEdge,
 }
 
-impl From<NewVertexColor> for VertexColor {
-    fn from(color: NewVertexColor) -> VertexColor {
-        match color {
-            NewVertexColor::Blue => VertexColor::Blue,
-            NewVertexColor::Red => VertexColor::Red,
-            NewVertexColor::None => VertexColor::None,
+impl From<GraphEditingMode> for Edit {
+    fn from(value: GraphEditingMode) -> Edit {
+        match value {
+            GraphEditingMode::DragVertex => Edit::DragVertex,
+            GraphEditingMode::ColorVertexBlue => Edit::ColorVertex(VertexColor::Blue),
+            GraphEditingMode::ColorVertexRed => Edit::ColorVertex(VertexColor::Red),
+            GraphEditingMode::ColorVertexNone => Edit::ColorVertex(VertexColor::None),
+            GraphEditingMode::AddVertex => Edit::AddVertex,
+            GraphEditingMode::DeleteVertex => Edit::DeleteVertex,
+            GraphEditingMode::AddEdge => Edit::AddEdge,
         }
     }
 }
@@ -56,7 +62,7 @@ impl_has!(PositionedVertex -> position -> V2f);
 
 imgui_enum! {
     #[derive(Debug, Clone, Copy)]
-    NewVertexColor {
+    VertexColor {
         Blue, "Blue",
         Red, "Red",
         None, "None",
@@ -67,16 +73,14 @@ imgui_enum! {
 pub struct GraphWindow<G> {
     widget: GraphWidget<G>,
     reposition_mode: RepositionMode,
-    new_vertex_color: NewVertexColor,
+    new_vertex_color: VertexColor,
     editing_mode: GraphEditingMode,
     add_edge_mode: AddEdgeMode,
 }
 
 impl<G> GraphWindow<G>
 where
-    G: Graph<PositionedVertex> + Clone + 'static,
-    TitledWindow<GraphWindow<G>>: IsCgtWindow,
-    GraphWidget<G>: FilePrefix,
+    G: NamedGraph,
 {
     pub fn new() -> GraphWindow<G> {
         let mut this = GraphWindow {
@@ -108,7 +112,7 @@ where
                     }; 14],
                 ),
             },
-            new_vertex_color: NewVertexColor::None,
+            new_vertex_color: VertexColor::None,
             reposition_mode: RepositionMode::SpringEmbedder,
             editing_mode: GraphEditingMode::DragVertex,
             add_edge_mode: AddEdgeMode::new(),
@@ -174,12 +178,7 @@ where
                         .push(Box::new(TitledWindow::without_title(w)));
                 }
             }
-            save_button(
-                ui,
-                <GraphWidget<G> as FilePrefix>::FILE_PREFIX,
-                &self.widget,
-                None,
-            );
+            save_button(ui, G::FILE_PREFIX, &self.widget, None);
         }
 
         let short_inputs = ui.push_item_width(200.0);
@@ -228,8 +227,8 @@ where
 
         let pressed = canvas.pressed_vertex();
         let clicked = canvas.clicked_vertex(&self.widget.graph);
-        match self.editing_mode {
-            GraphEditingMode::DragVertex => {
+        match Edit::from(self.editing_mode) {
+            Edit::DragVertex => {
                 if let Some(pressed) = pressed {
                     let delta = V2f::from(ui.io().mouse_delta);
                     let current_pos: &mut V2f =
@@ -237,48 +236,34 @@ where
                     *current_pos += delta;
                 }
             }
-            GraphEditingMode::ColorVertexBlue => {
+            Edit::ColorVertex(color) => {
                 if let Some(clicked) = clicked {
                     let clicked_vertex: &mut VertexColor =
                         self.widget.graph.get_vertex_mut(clicked).get_inner_mut();
-                    *clicked_vertex = VertexColor::Blue;
+                    *clicked_vertex = color;
                 }
             }
-            GraphEditingMode::ColorVertexRed => {
-                if let Some(clicked) = clicked {
-                    let clicked_vertex: &mut VertexColor =
-                        self.widget.graph.get_vertex_mut(clicked).get_inner_mut();
-                    *clicked_vertex = VertexColor::Red;
-                }
-            }
-            GraphEditingMode::ColorVertexNone => {
-                if let Some(clicked) = clicked {
-                    let clicked_vertex: &mut VertexColor =
-                        self.widget.graph.get_vertex_mut(clicked).get_inner_mut();
-                    *clicked_vertex = VertexColor::None;
-                }
-            }
-            GraphEditingMode::AddVertex => {
+            Edit::AddVertex => {
                 if let Some(new_vertex_position) = new_vertex_position {
                     self.widget.graph.add_vertex(PositionedVertex {
-                        color: VertexColor::from(self.new_vertex_color),
+                        color: self.new_vertex_color,
                         position: new_vertex_position,
                     });
                 }
             }
-            GraphEditingMode::DeleteVertex => {
+            Edit::DeleteVertex => {
                 if let Some(clicked) = clicked {
                     self.widget.graph.remove_vertex(clicked);
                 }
             }
-            GraphEditingMode::AddEdge => {
+            Edit::AddEdge => {
                 self.add_edge_mode.handle_update(
                     V2f::from(ui.io().mouse_pos),
                     graph_area_position,
                     &mut canvas,
                     &mut &mut self.widget.graph,
                     |position| PositionedVertex {
-                        color: VertexColor::from(self.new_vertex_color),
+                        color: self.new_vertex_color,
                         position,
                     },
                 );
@@ -327,40 +312,26 @@ where
     }
 }
 
-pub trait FilePrefix {
+pub trait NamedGraph: Graph<PositionedVertex> + Clone + 'static {
     const FILE_PREFIX: &'static str;
+    const TITLE: &'static str;
 }
 
-impl FilePrefix for GraphWidget<DirectedGraph<PositionedVertex>> {
+impl NamedGraph for DirectedGraph<PositionedVertex> {
     const FILE_PREFIX: &'static str = "directed_graph";
+    const TITLE: &'static str = "Directed Graph";
 }
 
-impl FilePrefix for GraphWidget<UndirectedGraph<PositionedVertex>> {
+impl NamedGraph for UndirectedGraph<PositionedVertex> {
     const FILE_PREFIX: &'static str = "undirected_graph";
+    const TITLE: &'static str = "Undirected Graph";
 }
 
-impl IsCgtWindow for TitledWindow<GraphWindow<UndirectedGraph<PositionedVertex>>> {
-    impl_titled_window!("Undirected Graph");
-
-    fn initialize(&mut self, _ctx: &GuiContext) {}
-
-    fn update(&mut self, _update: crate::UpdateKind) {}
-
-    fn draw(&mut self, ui: &Ui, ctx: &mut GuiContext) {
-        ui.window(&self.title)
-            .position(ui.io().mouse_pos, Condition::Appearing)
-            .size([800.0, 450.0], Condition::Appearing)
-            .bring_to_front_on_focus(true)
-            .menu_bar(true)
-            .opened(&mut self.is_open)
-            .build(|| {
-                self.content.draw_impl(ui, ctx, &mut self.scratch_buffer);
-            });
-    }
-}
-
-impl IsCgtWindow for TitledWindow<GraphWindow<DirectedGraph<PositionedVertex>>> {
-    impl_titled_window!("Directed Graph");
+impl<G> IsCgtWindow for TitledWindow<GraphWindow<G>>
+where
+    G: NamedGraph,
+{
+    impl_titled_window!(G::TITLE);
 
     fn initialize(&mut self, _ctx: &GuiContext) {}
 
