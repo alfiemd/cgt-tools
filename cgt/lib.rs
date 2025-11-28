@@ -9,6 +9,7 @@
 #![warn(missing_debug_implementations)]
 #![warn(missing_copy_implementations)]
 
+pub mod bit_vec;
 pub mod drawing;
 pub mod genetic_algorithm;
 pub mod graph;
