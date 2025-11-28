@@ -1,5 +1,8 @@
 //! Fixed-size bit vec
 
+use super::BitVecRef;
+use std::ops::{Deref, DerefMut};
+
 /// Fixed-size bit vec
 ///
 /// Note that the size is in *bytes* rather than bits since that would require `generic_const_exprs`
@@ -10,25 +13,7 @@ pub struct FixedBitVec<const BYTE_LEN: usize> {
 
 impl<const BYTE_LEN: usize> std::fmt::Debug for FixedBitVec<BYTE_LEN> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::io::Cursor;
-        use std::io::Write;
-
-        let mut list = f.debug_list();
-
-        // HACK: entry_with is unstable
-        for byte in &self.data {
-            let mut buf = [0u8; 16];
-            let mut cursor = Cursor::new(&mut buf[..]);
-            write!(cursor, "0b{byte:08b}").unwrap();
-            let len = cursor.position();
-            let buf = cursor.into_inner();
-            let buf = &buf[0..len as usize];
-            // SAFETY: We just wrote to buf
-            let s = unsafe { str::from_utf8_unchecked(buf) };
-            list.entry(&s);
-        }
-
-        list.finish()
+        BitVecRef::from_inner(&self.data).fmt(f)
     }
 }
 
@@ -48,31 +33,21 @@ impl<const BYTE_LEN: usize> FixedBitVec<BYTE_LEN> {
             data: [u8::MAX; BYTE_LEN],
         }
     }
+}
 
-    /// Get value at given *bit* index
-    ///
-    /// # Panics
-    ///
-    /// When index is out of bounds
-    #[inline]
-    pub fn get(&self, index: usize) -> bool {
-        let byte_index = index >> 3;
-        let bit_mask = 1 << (index & 0b111);
-        let byte = self.data[byte_index];
-        (byte & bit_mask) != 0
+impl<const BYTE_LEN: usize> Deref for FixedBitVec<BYTE_LEN> {
+    type Target = BitVecRef;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        BitVecRef::from_inner(&self.data)
     }
+}
 
-    /// Set value at given *bit* index
-    ///
-    /// # Panics
-    ///
-    /// When index is out of bounds
-    #[inline]
-    pub fn set(&mut self, index: usize, value: bool) {
-        let byte_index = index >> 3;
-        let bit_index = index & 0b111;
-        self.data[byte_index] &= !(1 << bit_index);
-        self.data[byte_index] |= (value as u8) << bit_index;
+impl<const BYTE_LEN: usize> DerefMut for FixedBitVec<BYTE_LEN> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        BitVecRef::from_inner_mut(&mut self.data)
     }
 }
 
