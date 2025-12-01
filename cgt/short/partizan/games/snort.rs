@@ -30,16 +30,14 @@ pub enum VertexColor {
     TintRight = 2,
 }
 
-impl TryFrom<u8> for VertexColor {
-    type Error = ();
-
+impl VertexColor {
     #[inline]
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    const fn try_from_raw(value: u8) -> Option<Self> {
         match value {
-            0 => Ok(Self::Empty),
-            1 => Ok(Self::TintLeft),
-            2 => Ok(Self::TintRight),
-            _ => Err(()),
+            n if n == Self::Empty as u8 => Some(Self::Empty),
+            n if n == Self::TintLeft as u8 => Some(Self::TintLeft),
+            n if n == Self::TintRight as u8 => Some(Self::TintRight),
+            _ => None,
         }
     }
 }
@@ -198,7 +196,7 @@ where
     /// Iterator over vertices where given player can move
     pub fn available_moves_for<const COLOR: u8>(&self) -> impl Iterator<Item = VertexIndex> + '_ {
         // const ADT generics are unstable, so here we go
-        let own_tint_color: VertexColor = VertexColor::try_from(COLOR).unwrap();
+        let own_tint_color: VertexColor = const { VertexColor::try_from_raw(COLOR).unwrap() };
         self.graph
             .vertex_indices()
             .map(|v_idx| self.graph.get_vertex(v_idx))
@@ -214,7 +212,7 @@ where
     /// if the move is legal
     #[must_use]
     pub fn move_in_vertex<const COLOR: u8>(&self, move_vertex_idx: VertexIndex) -> Self {
-        let own_tint_color: VertexColor = VertexColor::try_from(COLOR).unwrap();
+        let own_tint_color: VertexColor = const { VertexColor::try_from_raw(COLOR).unwrap() };
         let mut position: Self = self.clone();
 
         let mut to_remove = Vec::with_capacity(self.graph.vertex_degree(move_vertex_idx) + 1);
