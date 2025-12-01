@@ -1,13 +1,12 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, atomic::AtomicBool},
-};
-
 use crate::commands::p_free::distinguish;
 use anyhow::Result;
 use cgt::misere::p_free::{GameForm, Outcome};
 use clap::Parser;
 use quickcheck::{Arbitrary, Gen};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 /// Perform frobination (WIP, DO NOT USE)
 #[derive(Parser, Debug, Clone)]
@@ -21,10 +20,10 @@ pub struct Args {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct TippingPoints {
-    rl: u32,
-    nl: u32,
-    ln: u32,
-    rn: u32,
+    gl: u32,
+    gr: u32,
+    hl: u32,
+    hr: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -114,58 +113,57 @@ pub fn run(args: Args) -> Result<()> {
     let mut known = BTreeMap::<TippingPoints, PossibleOutcome>::new();
 
     let mut rnd = Gen::new(args.size as usize);
-    eprintln!("r(l), n(l), l(n), r(n), o(n + l), n, l");
+    eprintln!("l(g), r(g), l(h), r(h), o(g + h), g, h");
     while !finished.load(std::sync::atomic::Ordering::Relaxed) {
-        let l = GameForm::arbitrary(&mut rnd);
-        let n = GameForm::arbitrary(&mut rnd);
-        if l.is_p_free()
-            && args.variant.matches(&l)
-            && l.outcome() == Outcome::L
-            && n.is_p_free()
-            && args.variant.matches(&n)
-            && n.outcome() == Outcome::N
+        let g = GameForm::arbitrary(&mut rnd);
+        let h = GameForm::arbitrary(&mut rnd);
+        if g.is_p_free()
+            && args.variant.matches(&g)
+            && g.outcome() == Outcome::N
+            && h.is_p_free()
+            && args.variant.matches(&h)
+            && h.outcome() == Outcome::N
         {
             let tipping_points = TippingPoints {
-                rl: l.right_tipping_point(),
-                nl: l.next_tipping_point(),
-                ln: n.left_tipping_point(),
-                rn: n.right_tipping_point(),
+                gl: g.left_tipping_point(),
+                gr: g.right_tipping_point(),
+                hl: h.left_tipping_point(),
+                hr: h.right_tipping_point(),
             };
-            let possible_outcomes = known
-                .entry(tipping_points)
-                .or_insert(PossibleOutcome::none());
-            if possible_outcomes.has_outcome(Outcome::L)
-                && possible_outcomes.has_outcome(Outcome::N)
-            {
-                continue;
-            }
 
-            let sum = GameForm::sum(&l, &n);
+            let sum = GameForm::sum(&g, &h);
             let outcome = sum.outcome();
-            if possible_outcomes.mark_as_possible(outcome) {
+            if known
+                .entry(tipping_points)
+                .or_insert(PossibleOutcome::none())
+                .mark_as_possible(outcome)
+            {
                 eprintln!(
                     "{},    {},    {},    {},    {},        {}, {}",
-                    tipping_points.rl,
-                    tipping_points.nl,
-                    tipping_points.ln,
-                    tipping_points.rn,
+                    tipping_points.gl,
+                    tipping_points.gr,
+                    tipping_points.hl,
+                    tipping_points.hr,
                     outcome,
-                    n,
-                    l
+                    h,
+                    g
+                );
+                dbg!(
+                    tipping_points.gl < tipping_points.hr && tipping_points.gr > tipping_points.hl
                 );
             }
         }
     }
 
     eprintln!();
-    println!("r(l), n(l), l(n), r(n), o(n + l)");
+    println!("l(g), r(g), l(h), r(h), o(g + h)");
     for (tipping_points, outcomes) in known {
         println!(
             "${}$ & ${}$ & ${}$ & ${}$ & ${}$ \\\\",
-            tipping_points.rl,
-            tipping_points.nl,
-            tipping_points.ln,
-            tipping_points.rn,
+            tipping_points.gl,
+            tipping_points.gr,
+            tipping_points.hl,
+            tipping_points.hr,
             Latex(outcomes),
         );
     }
