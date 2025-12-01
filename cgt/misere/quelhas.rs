@@ -5,6 +5,7 @@
 use crate::{
     drawing::{self, BoundingBox, Canvas, Color, Draw},
     grid::{FiniteGrid, Grid},
+    short::partizan::Player,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -12,6 +13,15 @@ pub enum Tile {
     Empty,
     Blue,
     Red,
+}
+
+impl From<Player> for Tile {
+    fn from(player: Player) -> Tile {
+        match player {
+            Player::Left => Tile::Blue,
+            Player::Right => Tile::Red,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -23,15 +33,15 @@ impl<G> Quelhas<G>
 where
     G: Grid<Item = Tile>,
 {
-    pub fn new(grid: G) -> Quelhas<G> {
+    pub const fn new(grid: G) -> Quelhas<G> {
         Quelhas { grid }
     }
 
-    pub fn grid(&self) -> &G {
+    pub const fn grid(&self) -> &G {
         &self.grid
     }
 
-    pub fn grid_mut(&mut self) -> &mut G {
+    pub const fn grid_mut(&mut self) -> &mut G {
         &mut self.grid
     }
 }

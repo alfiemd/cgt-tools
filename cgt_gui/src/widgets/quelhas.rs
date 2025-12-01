@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::{
     AccessTracker, GuiContext, IsCgtWindow, TitledWindow, imgui_enum, impl_titled_window, widgets,
 };
@@ -11,7 +9,9 @@ use cgt::{
         p_free::GameForm,
         quelhas::{Quelhas, Tile},
     },
+    short::partizan::Player,
 };
+use std::ops::Deref;
 
 imgui_enum! {
     #[derive(Debug, Clone, Copy)]
@@ -26,7 +26,7 @@ imgui_enum! {
 
 enum Edit {
     Set(Tile),
-    Move(Tile),
+    Move(Player),
 }
 
 impl From<GraphEditingMode> for Edit {
@@ -35,8 +35,8 @@ impl From<GraphEditingMode> for Edit {
             GraphEditingMode::SetBlue => Edit::Set(Tile::Blue),
             GraphEditingMode::SetRed => Edit::Set(Tile::Red),
             GraphEditingMode::SetNone => Edit::Set(Tile::Empty),
-            GraphEditingMode::MoveLeft => Edit::Move(Tile::Blue),
-            GraphEditingMode::MoveRight => Edit::Move(Tile::Red),
+            GraphEditingMode::MoveLeft => Edit::Move(Player::Left),
+            GraphEditingMode::MoveRight => Edit::Move(Player::Right),
         }
     }
 }
@@ -136,58 +136,72 @@ impl IsCgtWindow for TitledWindow<QuelhasWindow> {
                                 player_tile,
                             );
                         }
-                        Edit::Move(player_tile) => match self.content.first_move.clone() {
+                        Edit::Move(player) => match self.content.first_move.clone() {
                             None => {
-                                let mut game = self.content.game.deref().clone();
-                                game.grid_mut()
-                                    .set(clicked_tile.0, clicked_tile.1, player_tile);
-                                self.content.first_move = Some(FirstMove {
-                                    tile: clicked_tile,
-                                    preview_game: game,
-                                })
+                                if matches!(
+                                    self.content.game.grid().get(clicked_tile.0, clicked_tile.1),
+                                    Tile::Empty
+                                ) {
+                                    let mut game = self.content.game.deref().clone();
+                                    game.grid_mut().set(
+                                        clicked_tile.0,
+                                        clicked_tile.1,
+                                        Tile::from(player),
+                                    );
+                                    self.content.first_move = Some(FirstMove {
+                                        tile: clicked_tile,
+                                        preview_game: game,
+                                    });
+                                }
                             }
                             Some(first_move) => 'outer: {
                                 self.content.first_move = None;
-
-                                if first_move.tile == clicked_tile {
-                                } else if clicked_tile.0 == first_move.tile.0
-                                    && matches!(player_tile, Tile::Blue)
-                                {
-                                    let start_y = u8::min(clicked_tile.1, first_move.tile.1);
-                                    let end_y = u8::max(clicked_tile.1, first_move.tile.1);
-                                    let mut new_game = self.content.game.clone();
-                                    for y in start_y..=end_y {
-                                        new_game.grid_mut().set(clicked_tile.0, y, player_tile);
-                                        if !matches!(
-                                            self.content.game.grid().get(clicked_tile.0, y),
-                                            Tile::Empty
-                                        ) {
-                                            break 'outer;
+                                match player {
+                                    Player::Left
+                                        if clicked_tile.0 == first_move.tile.0
+                                            && clicked_tile.1 != first_move.tile.1 =>
+                                    {
+                                        let x = clicked_tile.0;
+                                        let start_y = u8::min(clicked_tile.1, first_move.tile.1);
+                                        let end_y = u8::max(clicked_tile.1, first_move.tile.1);
+                                        let mut new_game = self.content.game.clone();
+                                        for y in start_y..=end_y {
+                                            new_game.grid_mut().set(x, y, Tile::from(player));
+                                            if !matches!(
+                                                self.content.game.grid().get(x, y),
+                                                Tile::Empty
+                                            ) {
+                                                break 'outer;
+                                            }
+                                        }
+                                        self.content.game = new_game;
+                                        if self.content.alternating_moves {
+                                            self.content.editing_mode = GraphEditingMode::MoveRight;
                                         }
                                     }
-                                    self.content.game = new_game;
-                                    if self.content.alternating_moves {
-                                        self.content.editing_mode = GraphEditingMode::MoveRight;
-                                    }
-                                } else if clicked_tile.1 == first_move.tile.1
-                                    && matches!(player_tile, Tile::Red)
-                                {
-                                    let start_x = u8::min(clicked_tile.0, first_move.tile.0);
-                                    let end_x = u8::max(clicked_tile.0, first_move.tile.0);
-                                    let mut new_game = self.content.game.clone();
-                                    for x in start_x..=end_x {
-                                        new_game.grid_mut().set(x, clicked_tile.1, player_tile);
-                                        if !matches!(
-                                            self.content.game.grid().get(x, clicked_tile.1),
-                                            Tile::Empty
-                                        ) {
-                                            break 'outer;
+                                    Player::Right
+                                        if clicked_tile.1 == first_move.tile.1
+                                            && clicked_tile.0 != first_move.tile.0 =>
+                                    {
+                                        let y = clicked_tile.1;
+                                        let start_x = u8::min(clicked_tile.0, first_move.tile.0);
+                                        let end_x = u8::max(clicked_tile.0, first_move.tile.0);
+                                        let mut new_game = self.content.game.clone();
+                                        for x in start_x..=end_x {
+                                            new_game.grid_mut().set(x, y, Tile::from(player));
+                                            if !matches!(
+                                                self.content.game.grid().get(x, y),
+                                                Tile::Empty
+                                            ) {
+                                                break 'outer;
+                                            }
+                                        }
+                                        self.content.game = new_game;
+                                        if self.content.alternating_moves {
+                                            self.content.editing_mode = GraphEditingMode::MoveLeft;
                                         }
                                     }
-                                    self.content.game = new_game;
-                                    if self.content.alternating_moves {
-                                        self.content.editing_mode = GraphEditingMode::MoveLeft;
-                                    }
+                                    Player::Left | Player::Right => {}
                                 }
                             }
                         },
