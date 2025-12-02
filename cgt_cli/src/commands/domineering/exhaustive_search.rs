@@ -85,6 +85,10 @@ pub struct Args {
     /// Maximum number of games stored in the transposition table
     #[arg(long, default_value = None)]
     transposition_table_capacity: Option<u64>,
+
+    /// Number of threads to use. Will use all threads if not specified
+    #[arg(long, default_value = None)]
+    threads: Option<u32>,
 }
 
 enum TranspositionTableStrategy {
@@ -160,6 +164,13 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     let transposition_table = TranspositionTableStrategy::new(&args)?;
+
+    if let Some(threads) = args.threads {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads as usize)
+            .build_global()
+            .context("Could not build the thread pool")?;
+    }
 
     let output_file =
         File::create(&args.output_path).with_context(|| "Could not open output file")?;
