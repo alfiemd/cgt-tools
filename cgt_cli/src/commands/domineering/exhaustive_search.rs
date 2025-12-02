@@ -3,9 +3,11 @@ use cgt::{
     grid::{FiniteGrid, small_bit_grid::SmallBitGrid},
     numeric::dyadic_rational_number::DyadicRationalNumber,
     short::partizan::{
-        games::domineering,
+        games::domineering::Domineering,
         partizan_game::PartizanGame,
-        transposition_table::{NoTranspositionTable, ParallelTranspositionTable},
+        transposition_table::{
+            CacheTranspositionTable, NoTranspositionTable, ParallelTranspositionTable,
+        },
     },
 };
 use clap::{Parser, ValueEnum};
@@ -79,6 +81,34 @@ pub struct Args {
     /// Don't use transposition table of game positions and canonical forms
     #[arg(long, default_value_t = false)]
     no_transposition_table: bool,
+
+    /// Maximum number of games stored in the transposition table
+    #[arg(long, default_value = None)]
+    transposition_table_capacity: Option<u64>,
+}
+
+enum TranspositionTableStrategy {
+    No(NoTranspositionTable<Domineering>),
+    All(ParallelTranspositionTable<Domineering>),
+    WithCapacity(CacheTranspositionTable<Domineering>),
+}
+
+impl TranspositionTableStrategy {
+    fn new(args: &Args) -> Result<TranspositionTableStrategy> {
+        match (
+            args.no_transposition_table,
+            args.transposition_table_capacity,
+        ) {
+            (true, None) => Ok(TranspositionTableStrategy::No(NoTranspositionTable::new())),
+            (false, None) => Ok(TranspositionTableStrategy::All(
+                ParallelTranspositionTable::new(),
+            )),
+            (false, Some(capacity)) => Ok(TranspositionTableStrategy::WithCapacity(
+                CacheTranspositionTable::new(capacity),
+            )),
+            (true, Some(_)) => bail!("Conflicting transposition table options"),
+        }
+    }
 }
 
 struct ProgressTracker {
@@ -129,11 +159,7 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
 
-    let transposition_table = if args.no_transposition_table {
-        None
-    } else {
-        Some(ParallelTranspositionTable::new())
-    };
+    let transposition_table = TranspositionTableStrategy::new(&args)?;
 
     let output_file =
         File::create(&args.output_path).with_context(|| "Could not open output file")?;
@@ -160,7 +186,7 @@ pub fn run(args: Args) -> Result<()> {
                 i,
             )
             .unwrap();
-            let grid = domineering::Domineering::new(grid).normalize_grid();
+            let grid = Domineering::new(grid).normalize_grid();
 
             let decompositions = grid.decompositions();
 
@@ -186,10 +212,17 @@ pub fn run(args: Args) -> Result<()> {
 
             let thermograph = match progress_tracker.args.thermograph_method {
                 ThermographMethod::CanonicalForm => {
-                    let canonical_form = transposition_table.as_ref().map_or_else(
-                        || grid.canonical_form(&NoTranspositionTable::new()),
-                        |transposition_table| grid.canonical_form(transposition_table),
-                    );
+                    let canonical_form = match &transposition_table {
+                        TranspositionTableStrategy::No(transposition_table) => {
+                            grid.canonical_form(transposition_table)
+                        }
+                        TranspositionTableStrategy::All(transposition_table) => {
+                            grid.canonical_form(transposition_table)
+                        }
+                        TranspositionTableStrategy::WithCapacity(transposition_table) => {
+                            grid.canonical_form(transposition_table)
+                        }
+                    };
                     canonical_form.thermograph()
                 }
                 ThermographMethod::Direct => grid.thermograph_direct(),

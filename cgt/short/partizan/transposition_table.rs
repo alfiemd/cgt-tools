@@ -4,8 +4,13 @@ use crate::short::partizan::canonical_form::CanonicalForm;
 use std::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 mod dashmap;
-
 pub use dashmap::ParallelTranspositionTable;
+
+#[cfg(feature = "moka")]
+mod moka;
+
+#[cfg(feature = "moka")]
+pub use moka::CacheTranspositionTable;
 
 /// Interface of a transposition table
 pub trait TranspositionTable<G> {
