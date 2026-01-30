@@ -1,4 +1,4 @@
-use crate::commands::p_free::distinguish;
+use crate::commands::p_free::order;
 use anyhow::Result;
 use cgt::misere::p_free::{GameForm, Outcome};
 use clap::Parser;
@@ -15,7 +15,7 @@ pub struct Args {
     size: u64,
 
     #[arg(long)]
-    variant: distinguish::Variant,
+    variant: order::Variant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
