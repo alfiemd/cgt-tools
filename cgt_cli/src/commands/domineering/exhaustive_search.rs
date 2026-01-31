@@ -91,6 +91,7 @@ pub struct Args {
     threads: Option<u32>,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum TranspositionTableStrategy {
     No(NoTranspositionTable<Domineering>),
     All(ParallelTranspositionTable<Domineering>),

@@ -47,11 +47,12 @@ fn next_day(previous_day: &[GameForm]) -> Vec<GameForm> {
         .filter(|g| g.is_p_free() && g.is_dead_ending())
         .map(|g| reduce(&g))
         .collect::<Vec<_>>();
-    this_day.sort_unstable_by(|g, h| g.total_cmp(h));
+    this_day.sort_unstable_by(GameForm::total_cmp);
     this_day.dedup_by(|g, h| g.total_eq(&h));
     this_day
 }
 
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> Result<()> {
     let mut day = vec![GameForm::new_integer(0)];
     for _ in 0..args.day {

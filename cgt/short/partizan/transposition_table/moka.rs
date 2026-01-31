@@ -60,6 +60,6 @@ where
 
     #[inline]
     fn insert_position(&self, position: G, value: CanonicalForm) {
-        self.cache.insert(position, value)
+        self.cache.insert(position, value);
     }
 }

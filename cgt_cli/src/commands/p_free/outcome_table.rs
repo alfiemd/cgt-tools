@@ -99,7 +99,7 @@ impl TexDisplay for PossibleOutcome {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> Result<()> {
     let finished = Arc::new(AtomicBool::new(false));
     ctrlc::set_handler({

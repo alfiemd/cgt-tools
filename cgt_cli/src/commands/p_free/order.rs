@@ -88,11 +88,12 @@ fn shrink_witness(
     order: CheckedOrder,
 ) -> Option<GameForm> {
     for shrunken in distinguisher.shrink() {
-        if shrunken.is_p_free() && variant.matches(&shrunken) {
-            if check_order(&shrunken, lhs, rhs, order) {
-                let more_shrunken = shrink_witness(&shrunken, lhs, rhs, variant, order);
-                return Some(more_shrunken.unwrap_or(shrunken));
-            }
+        if shrunken.is_p_free()
+            && variant.matches(&shrunken)
+            && check_order(&shrunken, lhs, rhs, order)
+        {
+            let more_shrunken = shrink_witness(&shrunken, lhs, rhs, variant, order);
+            return Some(more_shrunken.unwrap_or(shrunken));
         }
     }
     None
@@ -146,7 +147,7 @@ pub fn check_relation_possibility(args: &Args) -> SearchStatistics<Relation> {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> anyhow::Result<()> {
     let stats = check_relation_possibility(&args);
     eprintln!("Attempted: {}", stats.attempted);
