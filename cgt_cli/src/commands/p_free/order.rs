@@ -1,6 +1,14 @@
-use cgt::misere::p_free::GameForm;
-use clap::{Parser, ValueEnum};
-use quickcheck::{Arbitrary, Gen};
+use cgt::{
+    misere::{
+        game_form::{GameFormContext, StandardFormContext},
+        p_free::{PFreeForm, PFreeFormContext},
+    },
+    parsing::Parser,
+    result::UnwrapInfallible,
+};
+use clap::ValueEnum;
+use quickcheck::Gen;
+use std::{convert::Infallible, fmt::Display};
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Variant {
@@ -9,21 +17,24 @@ pub enum Variant {
 }
 
 impl Variant {
-    pub fn matches(self, g: &GameForm) -> bool {
+    pub fn matches<C>(self, context: &C, g: &C::Form) -> bool
+    where
+        C: GameFormContext,
+    {
         match self {
-            Variant::DeadEnding => g.is_dead_ending(),
-            Variant::Blocking => g.is_blocking(),
+            Variant::DeadEnding => context.is_dead_ending(g),
+            Variant::Blocking => context.is_blocking(g),
         }
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(clap::Parser, Debug)]
 pub struct Args {
     #[arg(long, allow_hyphen_values = true)]
-    pub lhs: GameForm,
+    pub lhs: String,
 
     #[arg(long, allow_hyphen_values = true)]
-    pub rhs: GameForm,
+    pub rhs: String,
 
     /// Generator size
     #[arg(long)]
@@ -33,6 +44,15 @@ pub struct Args {
     pub max_attempts: u64,
 
     #[arg(long, value_enum)]
+    pub variant: Variant,
+}
+
+// clap cannot set generic bounds so here we go
+pub struct RichArgs<G> {
+    pub lhs: G,
+    pub rhs: G,
+    pub size: u64,
+    pub max_attempts: u64,
     pub variant: Variant,
 }
 
@@ -47,20 +67,20 @@ pub struct SearchStatistics<T> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Relation {
+pub enum Relation<G> {
     /// Possibly equal
     PossiblyEqual,
 
     /// Possibly less than, guaranteed not to be greater or equal
-    PossiblyLessThan { not_ge_witness: GameForm },
+    PossiblyLessThan { not_ge_witness: G },
 
     /// Possibly greater than, guaranteed not to be less or equal
-    PossiblyGreaterThan { not_le_witness: GameForm },
+    PossiblyGreaterThan { not_le_witness: G },
 
     /// Guaranteed to be incomparable
     Incomparable {
-        not_ge_witness: GameForm,
-        not_le_witness: GameForm,
+        not_ge_witness: G,
+        not_le_witness: G,
     },
 }
 
@@ -70,9 +90,28 @@ enum CheckedOrder {
     GreaterThanOrEqual,
 }
 
-fn check_order(x: &GameForm, lhs: &GameForm, rhs: &GameForm, order: CheckedOrder) -> bool {
-    let ol = GameForm::sum(lhs, x).outcome();
-    let or = GameForm::sum(rhs, x).outcome();
+fn check_order<C>(
+    context: &PFreeFormContext<C>,
+    x: &PFreeForm<C::Form>,
+    lhs: &PFreeForm<C::Form>,
+    rhs: &PFreeForm<C::Form>,
+    order: CheckedOrder,
+) -> bool
+where
+    C: GameFormContext<SumConstructionError = Infallible>,
+{
+    let ol = context.underlying().outcome(
+        &context
+            .underlying()
+            .sum(lhs.underlying(), x.underlying())
+            .unwrap_infallible(),
+    );
+    let or = context.underlying().outcome(
+        &context
+            .underlying()
+            .sum(rhs.underlying(), x.underlying())
+            .unwrap_infallible(),
+    );
 
     match order {
         CheckedOrder::GreaterThanOrEqual => ol < or,
@@ -80,19 +119,22 @@ fn check_order(x: &GameForm, lhs: &GameForm, rhs: &GameForm, order: CheckedOrder
     }
 }
 
-fn shrink_witness(
-    distinguisher: &GameForm,
-    lhs: &GameForm,
-    rhs: &GameForm,
+fn shrink_witness<C>(
+    context: &PFreeFormContext<C>,
+    distinguisher: &PFreeForm<C::Form>,
+    lhs: &PFreeForm<C::Form>,
+    rhs: &PFreeForm<C::Form>,
     variant: Variant,
     order: CheckedOrder,
-) -> Option<GameForm> {
-    for shrunken in distinguisher.shrink() {
-        if shrunken.is_p_free()
-            && variant.matches(&shrunken)
-            && check_order(&shrunken, lhs, rhs, order)
+) -> Option<PFreeForm<C::Form>>
+where
+    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+{
+    for shrunken in context.shrink(distinguisher) {
+        if variant.matches(context, &shrunken) // TODO: Pass DeadEndingFormContext instead
+            && check_order(context, &shrunken, lhs, rhs, order)
         {
-            let more_shrunken = shrink_witness(&shrunken, lhs, rhs, variant, order);
+            let more_shrunken = shrink_witness(context, &shrunken, lhs, rhs, variant, order);
             return Some(more_shrunken.unwrap_or(shrunken));
         }
     }
@@ -100,7 +142,14 @@ fn shrink_witness(
 }
 
 /// Check if games satisfy specified `order` and return the distinguishing `x` if not
-fn find_witness(args: &Args, order: CheckedOrder) -> SearchStatistics<Option<GameForm>> {
+fn find_witness<C>(
+    context: &PFreeFormContext<C>,
+    args: &RichArgs<PFreeForm<C::Form>>,
+    order: CheckedOrder,
+) -> SearchStatistics<Option<PFreeForm<C::Form>>>
+where
+    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+{
     let mut statistics = SearchStatistics {
         attempted: 0,
         skipped: 0,
@@ -110,11 +159,15 @@ fn find_witness(args: &Args, order: CheckedOrder) -> SearchStatistics<Option<Gam
     let mut rnd = Gen::new(args.size as usize);
     for _ in 0..args.max_attempts {
         statistics.attempted += 1;
-        let x = GameForm::arbitrary(&mut rnd);
-        if x.is_p_free() && args.variant.matches(&x) {
-            if check_order(&x, &args.lhs, &args.rhs, order) {
+        let Ok(x) = context.arbitrary(&mut rnd) else {
+            statistics.skipped += 1;
+            continue;
+        };
+        if args.variant.matches(context, &x) {
+            if check_order(context, &x, &args.lhs, &args.rhs, order) {
                 statistics.result = Some(
-                    shrink_witness(&x, &args.lhs, &args.rhs, args.variant, order).unwrap_or(x),
+                    shrink_witness(context, &x, &args.lhs, &args.rhs, args.variant, order)
+                        .unwrap_or(x),
                 );
                 break;
             }
@@ -126,9 +179,15 @@ fn find_witness(args: &Args, order: CheckedOrder) -> SearchStatistics<Option<Gam
     statistics
 }
 
-pub fn check_relation_possibility(args: &Args) -> SearchStatistics<Relation> {
-    let le = find_witness(args, CheckedOrder::LessThanOrEqual);
-    let ge = find_witness(args, CheckedOrder::GreaterThanOrEqual);
+pub fn check_relation_possibility<C>(
+    context: &PFreeFormContext<C>,
+    args: &RichArgs<PFreeForm<C::Form>>,
+) -> SearchStatistics<Relation<<PFreeFormContext<C> as GameFormContext>::Form>>
+where
+    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+{
+    let le = find_witness(context, args, CheckedOrder::LessThanOrEqual);
+    let ge = find_witness(context, args, CheckedOrder::GreaterThanOrEqual);
 
     SearchStatistics {
         attempted: le.attempted + ge.attempted,
@@ -147,9 +206,12 @@ pub fn check_relation_possibility(args: &Args) -> SearchStatistics<Relation> {
     }
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
-pub fn run(args: Args) -> anyhow::Result<()> {
-    let stats = check_relation_possibility(&args);
+fn show_results<C>(context: &PFreeFormContext<C>, args: &RichArgs<PFreeForm<C::Form>>)
+where
+    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+    PFreeForm<C::Form>: Display,
+{
+    let stats = check_relation_possibility(context, args);
     eprintln!("Attempted: {}", stats.attempted);
     eprintln!(
         "Ignored: {} ({:.2}%)",
@@ -157,35 +219,52 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         stats.skipped as f32 / stats.attempted as f32 * 100.0
     );
 
+    let context = context.underlying();
     match stats.result {
         Relation::PossiblyEqual => {
             println!("Possibly: {} = {}", args.lhs, args.rhs);
         }
         Relation::PossiblyLessThan { not_ge_witness } => {
-            println!("Witness for not (>=): {not_ge_witness}");
+            println!("Witness for not (>=): {}", not_ge_witness);
             println!(
                 "o({} + {}) = {}",
                 args.lhs,
                 not_ge_witness,
-                GameForm::sum(&args.lhs, &not_ge_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.lhs.underlying(), not_ge_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
             println!(
                 "o({} + {}) = {}",
                 args.rhs,
                 not_ge_witness,
-                GameForm::sum(&args.rhs, &not_ge_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.lhs.underlying(), not_ge_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
             println!("Guaranteed: {} != {}", args.rhs, args.lhs);
             println!("Possibly: {} > {}", args.rhs, args.lhs);
         }
         Relation::PossiblyGreaterThan { not_le_witness } => {
-            println!("Witness for not (<=): {not_le_witness}");
+            println!("Witness for not (<=): {}", not_le_witness);
             println!(
                 "o({} + {}) = {} > {} = o({} + {})",
                 args.lhs,
                 not_le_witness,
-                GameForm::sum(&args.lhs, &not_le_witness).outcome(),
-                GameForm::sum(&args.rhs, &not_le_witness).outcome(),
+                context.outcome(
+                    &context
+                        .sum(args.lhs.underlying(), not_le_witness.underlying())
+                        .unwrap_infallible()
+                ),
+                context.outcome(
+                    &context
+                        .sum(args.rhs.underlying(), not_le_witness.underlying())
+                        .unwrap_infallible()
+                ),
                 args.rhs,
                 not_le_witness,
             );
@@ -196,35 +275,69 @@ pub fn run(args: Args) -> anyhow::Result<()> {
             not_ge_witness,
             not_le_witness,
         } => {
-            println!("Witness for not (>=): {not_ge_witness}");
+            println!("Witness for not (>=): {}", not_ge_witness);
             println!(
                 "o({} + {}) = {}",
                 args.lhs,
                 not_ge_witness,
-                GameForm::sum(&args.lhs, &not_ge_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.lhs.underlying(), not_ge_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
             println!(
                 "o({} + {}) = {}",
                 args.rhs,
                 not_ge_witness,
-                GameForm::sum(&args.rhs, &not_ge_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.rhs.underlying(), not_ge_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
-            println!("Witness for not (<=): {not_le_witness}");
+            println!("Witness for not (<=): {}", not_le_witness);
             println!(
                 "o({} + {}) = {}",
                 args.lhs,
                 not_le_witness,
-                GameForm::sum(&args.lhs, &not_le_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.lhs.underlying(), not_le_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
             println!(
                 "o({} + {}) = {}",
                 args.rhs,
                 not_le_witness,
-                GameForm::sum(&args.rhs, &not_le_witness).outcome()
+                context.outcome(
+                    &context
+                        .sum(args.rhs.underlying(), not_le_witness.underlying())
+                        .unwrap_infallible()
+                )
             );
             println!("Guaranteed: {} || {}", args.lhs, args.rhs);
         }
     }
+}
 
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+pub fn run(args: Args) -> anyhow::Result<()> {
+    let context = PFreeFormContext::new(&StandardFormContext);
+    let args = RichArgs {
+        lhs: context
+            .parse(Parser::new(&args.lhs))
+            .ok_or_else(|| anyhow::anyhow!("Could not parse `lhs`"))?
+            .1,
+        rhs: context
+            .parse(Parser::new(&args.rhs))
+            .ok_or_else(|| anyhow::anyhow!("Could not parse `rhs`"))?
+            .1,
+        size: args.size,
+        max_attempts: args.max_attempts,
+        variant: args.variant,
+    };
+    show_results(context, &args);
     Ok(())
 }

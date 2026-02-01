@@ -1,10 +1,17 @@
 use crate::commands::p_free::order;
 use anyhow::Result;
-use cgt::misere::p_free::{GameForm, Outcome};
+use cgt::{
+    misere::{
+        game_form::{GameFormContext, Outcome, StandardFormContext},
+        p_free::{PFreeContext, PFreeFormContext},
+    },
+    result::UnwrapInfallible,
+};
 use clap::Parser;
-use quickcheck::{Arbitrary, Gen};
+use quickcheck::Gen;
 use std::{
     collections::BTreeMap,
+    convert::Infallible,
     sync::{Arc, atomic::AtomicBool},
 };
 
@@ -101,6 +108,14 @@ impl TexDisplay for PossibleOutcome {
 
 #[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> Result<()> {
+    run_impl(args, &StandardFormContext)
+}
+
+#[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
+fn run_impl<C>(args: Args, context: &C) -> Result<()>
+where
+    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+{
     let finished = Arc::new(AtomicBool::new(false));
     ctrlc::set_handler({
         let finished = Arc::clone(&finished);
@@ -110,52 +125,43 @@ pub fn run(args: Args) -> Result<()> {
     })
     .unwrap();
 
+    let context = PFreeFormContext::new(context);
+
     let mut known = BTreeMap::<TippingPoints, PossibleOutcome>::new();
 
     let mut rnd = Gen::new(args.size as usize);
     eprintln!("l(g), r(g), l(h), r(h), o(g + h), g, h");
     while !finished.load(std::sync::atomic::Ordering::Relaxed) {
-        let g = GameForm::arbitrary(&mut rnd);
-        let h = GameForm::arbitrary(&mut rnd);
-        if g.is_p_free()
-            && args.variant.matches(&g)
-            && g.outcome() == Outcome::N
-            && h.is_p_free()
-            && args.variant.matches(&h)
-            && h.outcome() == Outcome::N
+        let Ok(g) = context.arbitrary(&mut rnd) else {
+            continue;
+        };
+        let Ok(h) = context.arbitrary(&mut rnd) else {
+            continue;
+        };
+        if context.outcome(&g) == Outcome::N
+            && context.outcome(&h) == Outcome::N
+            && args.variant.matches(context, &h)
+            && args.variant.matches(context, &g)
         {
             let tipping_points = TippingPoints {
-                gl: g.left_tipping_point(),
-                gr: g.right_tipping_point(),
-                hl: h.left_tipping_point(),
-                hr: h.right_tipping_point(),
+                gl: context.left_tipping_point(&g),
+                gr: context.right_tipping_point(&g),
+                hl: context.left_tipping_point(&h),
+                hr: context.right_tipping_point(&h),
             };
 
-            let sum = GameForm::sum(&g, &h);
-            let outcome = sum.outcome();
-            if known
+            let sum = context
+                .underlying()
+                .sum(g.underlying(), h.underlying())
+                .unwrap_infallible();
+            let outcome = context.underlying().outcome(&sum);
+            known
                 .entry(tipping_points)
                 .or_insert(PossibleOutcome::none())
-                .mark_as_possible(outcome)
-            {
-                eprintln!(
-                    "{},    {},    {},    {},    {},        {}, {}",
-                    tipping_points.gl,
-                    tipping_points.gr,
-                    tipping_points.hl,
-                    tipping_points.hr,
-                    outcome,
-                    h,
-                    g
-                );
-                dbg!(
-                    tipping_points.gl < tipping_points.hr && tipping_points.gr > tipping_points.hl
-                );
-            }
+                .mark_as_possible(outcome);
         }
     }
 
-    eprintln!();
     println!("l(g), r(g), l(h), r(h), o(g + h)");
     for (tipping_points, outcomes) in known {
         println!(

@@ -6,7 +6,7 @@ use cgt::{
     drawing::{Draw, imgui},
     grid::{FiniteGrid, Grid, vec_grid::VecGrid},
     misere::{
-        p_free::GameForm,
+        game_form::StandardForm,
         quelhas::{Quelhas, Tile},
     },
     short::partizan::Player,
@@ -53,7 +53,7 @@ pub struct QuelhasWindow {
     editing_mode: GraphEditingMode,
     alternating_moves: bool,
     first_move: Option<FirstMove>,
-    game_form: Option<GameForm>,
+    game_form: Option<StandardForm>,
 }
 
 impl QuelhasWindow {
