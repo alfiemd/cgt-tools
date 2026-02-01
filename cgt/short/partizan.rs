@@ -10,8 +10,8 @@ pub mod transposition_table;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(missing_docs)]
 pub enum Player {
-    Left,
     Right,
+    Left,
 }
 
 impl Player {
@@ -39,6 +39,7 @@ impl Player {
 mod tests {
     use super::*;
     use quickcheck::{Arbitrary, Gen};
+    use std::cmp::Ordering;
 
     impl Arbitrary for Player {
         fn arbitrary(g: &mut Gen) -> Self {
@@ -48,5 +49,14 @@ mod tests {
                 Player::Right
             }
         }
+    }
+
+    #[test]
+    fn player_order() {
+        // Just so no one changes order of enum variants
+        assert_eq!(Ord::cmp(&Player::Left, &Player::Right), Ordering::Greater);
+        assert_eq!(Ord::cmp(&Player::Right, &Player::Left), Ordering::Less);
+        assert_eq!(Ord::cmp(&Player::Left, &Player::Left), Ordering::Equal);
+        assert_eq!(Ord::cmp(&Player::Right, &Player::Right), Ordering::Equal);
     }
 }
