@@ -16,7 +16,7 @@ pub struct Args {
 
 fn reduce<C>(context: &C, game: &C::Form) -> C::Form
 where
-    C: GameFormContext<ConstructionError = Infallible>,
+    C: GameFormContext<DicoticConstructionError = Infallible>,
 {
     let lowest_lhs = context
         .moves(game, Player::Left)
@@ -50,7 +50,7 @@ where
 
 fn next_day<C>(context: &C, previous_day: &[C::Form]) -> Vec<C::Form>
 where
-    C: GameFormContext<ConstructionError = Infallible>,
+    C: GameFormContext<DicoticConstructionError = Infallible>,
 {
     let mut this_day = context
         .next_day(previous_day)

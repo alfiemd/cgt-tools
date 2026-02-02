@@ -1,8 +1,9 @@
 //! Utilities for working with the `Result` type
 
+#![allow(missing_docs)]
+
 use std::convert::Infallible;
 
-#[allow(missing_docs)]
 pub trait Void {
     fn absurd<T>(self) -> T;
 }
@@ -13,7 +14,6 @@ impl Void for Infallible {
     }
 }
 
-#[allow(missing_docs)]
 pub trait UnwrapInfallible {
     type R;
     fn unwrap_infallible(self) -> Self::R;

@@ -1,17 +1,31 @@
 #![allow(missing_docs)]
 
 use crate::{
-    misere::{game_form::Outcome, p_free::PFreeForm},
+    misere::game_form::Outcome,
     parsing::{Parser, lexeme, try_option},
     short::partizan::Player,
 };
-use std::cmp::Ordering;
+use std::{cmp::Ordering, convert::Infallible};
 
 #[cfg(any(test, feature = "quickcheck"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ArbitraryError<Construction, Integer> {
     Construction(Construction),
     Integer(Integer),
+}
+
+#[cfg(any(test, feature = "quickcheck"))]
+impl<G, Construction, Integer> ConstructionError<G> for ArbitraryError<Construction, Integer>
+where
+    Construction: ConstructionError<G>,
+    Integer: ConstructionError<G>,
+{
+    fn recover(self) -> G {
+        match self {
+            ArbitraryError::Construction(err) => err.recover(),
+            ArbitraryError::Integer(err) => err.recover(),
+        }
+    }
 }
 
 #[cfg(any(test, feature = "quickcheck"))]
@@ -28,21 +42,32 @@ where
     }
 }
 
+pub trait ConstructionError<G>: std::fmt::Debug {
+    fn recover(self) -> G;
+}
+
+impl<G> ConstructionError<G> for Infallible {
+    fn recover(self) -> G {
+        match self {}
+    }
+}
+
 #[allow(clippy::missing_errors_doc)]
 pub trait GameFormContext {
     type Form: Clone;
+    type BaseForm: Clone + std::fmt::Debug;
 
-    type ConstructionError: std::fmt::Debug;
-    type IntegerConstructionError: std::fmt::Debug;
-    type ConjugateConstructionError: std::fmt::Debug;
-    type SumConstructionError: std::fmt::Debug;
+    type DicoticConstructionError: ConstructionError<Self::BaseForm>;
+    type IntegerConstructionError: ConstructionError<Self::BaseForm>;
+    type ConjugateConstructionError: ConstructionError<Self::BaseForm>;
+    type SumConstructionError: ConstructionError<Self::BaseForm>;
 
     #[allow(clippy::wrong_self_convention)]
     fn new(
         &self,
         left: impl IntoIterator<Item = Self::Form>,
         right: impl IntoIterator<Item = Self::Form>,
-    ) -> Result<Self::Form, Self::ConstructionError>;
+    ) -> Result<Self::Form, Self::DicoticConstructionError>;
 
     fn moves<'a>(
         &self,
@@ -89,6 +114,14 @@ pub trait GameFormContext {
         }
     }
 
+    fn player_outcome(&self, game: &Self::Form, player: Player) -> Player {
+        if self.wins_going_first(game, player) {
+            player
+        } else {
+            player.opposite()
+        }
+    }
+
     fn wins_going_first(&self, game: &Self::Form, player: Player) -> bool {
         self.moves(game, player).count() == 0
             || self
@@ -111,14 +144,6 @@ pub trait GameFormContext {
     fn is_p_free(&self, game: &Self::Form) -> bool {
         (self.outcome(game) != Outcome::P)
             && Player::forall(|p| self.moves(game, p).all(|g| self.is_p_free(g)))
-    }
-
-    fn to_p_free(&self, game: Self::Form) -> Result<PFreeForm<Self::Form>, Self::Form> {
-        if self.is_p_free(&game) {
-            Ok(PFreeForm::new_unchecked(game))
-        } else {
-            Err(game)
-        }
     }
 
     fn is_end(&self, game: &Self::Form, player: Player) -> bool {
@@ -249,6 +274,23 @@ pub trait GameFormContext {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
+    fn from_str(&self, input: &str) -> Option<Self::Form> {
+        let (_, g) = self.parse(Parser::new(input))?;
+        Some(g)
+    }
+
+    fn to_string(&self, game: &Self::Form) -> String {
+        self.display(game).to_string()
+    }
+
+    fn display<'a>(&'a self, game: &'a Self::Form) -> impl std::fmt::Display + 'a {
+        DisplayGame {
+            context: self,
+            form: game,
+        }
+    }
+
     fn fmt(&self, game: &Self::Form, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_integer(game) {
             Some(n) => write!(f, "{n}"),
@@ -272,13 +314,19 @@ pub trait GameFormContext {
         }
     }
 
+    fn base(&self, game: Self::Form) -> Self::BaseForm;
+
+    fn base_context(&self) -> &impl GameFormContext<Form = Self::BaseForm>;
+
     #[cfg(any(test, feature = "quickcheck"))]
     fn arbitrary_sized(
         &self,
         g: &mut quickcheck::Gen,
         size: i64,
-    ) -> Result<Self::Form, ArbitraryError<Self::ConstructionError, Self::IntegerConstructionError>>
-    {
+    ) -> Result<
+        Self::Form,
+        ArbitraryError<Self::DicoticConstructionError, Self::IntegerConstructionError>,
+    > {
         use quickcheck::Arbitrary;
 
         if size < 1 {
@@ -311,8 +359,10 @@ pub trait GameFormContext {
     fn arbitrary(
         &self,
         g: &mut quickcheck::Gen,
-    ) -> Result<Self::Form, ArbitraryError<Self::ConstructionError, Self::IntegerConstructionError>>
-    {
+    ) -> Result<
+        Self::Form,
+        ArbitraryError<Self::DicoticConstructionError, Self::IntegerConstructionError>,
+    > {
         self.arbitrary_sized(g, g.size() as i64)
     }
 
@@ -349,5 +399,22 @@ pub trait GameFormContext {
                 }))
             }
         }
+    }
+}
+
+struct DisplayGame<'a, C>
+where
+    C: GameFormContext + ?Sized,
+{
+    context: &'a C,
+    form: &'a C::Form,
+}
+
+impl<C> std::fmt::Display for DisplayGame<'_, C>
+where
+    C: GameFormContext + ?Sized,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.context.fmt(self.form, f)
     }
 }

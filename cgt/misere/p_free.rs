@@ -1,7 +1,12 @@
 #![allow(missing_docs)]
 
 use crate::{
-    misere::game_form::{GameFormContext, Outcome, StandardForm, StandardFormContext},
+    misere::{
+        dead_ending::{DeadEndingForm, DeadEndingFormContext},
+        game_form::{
+            ConstructionError, GameFormContext, Outcome, StandardForm, StandardFormContext,
+        },
+    },
     result::UnwrapInfallible,
     short::partizan::Player,
 };
@@ -24,7 +29,7 @@ impl<C> PFreeFormContext<C> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct PFreeForm<G> {
     underlying: G,
@@ -42,6 +47,10 @@ impl<G> PFreeForm<G> {
 
     pub const fn underlying(&self) -> &G {
         &self.underlying
+    }
+
+    pub fn to_underlying(self) -> G {
+        self.underlying
     }
 }
 
@@ -127,9 +136,22 @@ pub trait PFreeContext: GameFormContext<IntegerConstructionError = Infallible> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PFreeConstructionError<E> {
-    NotPFree,
+pub enum PFreeConstructionError<G, E> {
+    NotPFree(G),
     Underlying(E),
+}
+
+impl<G, E> ConstructionError<G> for PFreeConstructionError<G, E>
+where
+    G: std::fmt::Debug,
+    E: ConstructionError<G>,
+{
+    fn recover(self) -> G {
+        match self {
+            PFreeConstructionError::NotPFree(g) => g,
+            PFreeConstructionError::Underlying(err) => err.recover(),
+        }
+    }
 }
 
 impl<C> GameFormContext for PFreeFormContext<C>
@@ -137,31 +159,34 @@ where
     C: GameFormContext<IntegerConstructionError = Infallible>,
 {
     type Form = PFreeForm<C::Form>;
+    type BaseForm = C::BaseForm;
 
-    type ConstructionError = PFreeConstructionError<C::ConstructionError>;
+    type DicoticConstructionError =
+        PFreeConstructionError<Self::BaseForm, C::DicoticConstructionError>;
 
     type IntegerConstructionError = Infallible;
 
     type ConjugateConstructionError = C::ConjugateConstructionError;
 
-    type SumConstructionError = PFreeConstructionError<C::SumConstructionError>;
+    type SumConstructionError = PFreeConstructionError<Self::BaseForm, C::SumConstructionError>;
 
     fn new(
         &self,
         left: impl IntoIterator<Item = Self::Form>,
         right: impl IntoIterator<Item = Self::Form>,
-    ) -> Result<Self::Form, Self::ConstructionError> {
-        self.context
+    ) -> Result<Self::Form, Self::DicoticConstructionError> {
+        let g = self
+            .context
             .new(
                 left.into_iter().map(|g| g.underlying),
                 right.into_iter().map(|g| g.underlying),
             )
-            .map_err(PFreeConstructionError::Underlying)
-            .and_then(|g| {
-                self.context
-                    .to_p_free(g)
-                    .map_err(|_| PFreeConstructionError::NotPFree)
-            })
+            .map_err(PFreeConstructionError::Underlying)?;
+        if self.underlying().is_p_free(&g) {
+            Ok(PFreeForm::new_unchecked(g))
+        } else {
+            Err(PFreeConstructionError::NotPFree(self.underlying().base(g)))
+        }
     }
 
     fn moves<'a>(
@@ -174,6 +199,10 @@ where
             .map(PFreeForm::new_ref_unchecked)
     }
 
+    fn is_p_free(&self, _game: &Self::Form) -> bool {
+        true
+    }
+
     fn total_cmp(&self, lhs: &Self::Form, rhs: &Self::Form) -> std::cmp::Ordering {
         self.context.total_cmp(&lhs.underlying, &rhs.underlying)
     }
@@ -182,27 +211,28 @@ where
         self.context.total_eq(&lhs.underlying, &rhs.underlying)
     }
 
-    fn is_p_free(&self, _game: &Self::Form) -> bool {
-        true
-    }
-
-    fn to_p_free(&self, game: Self::Form) -> Result<PFreeForm<Self::Form>, Self::Form> {
-        Ok(PFreeForm::new_unchecked(game))
-    }
-
     fn sum(
         &self,
         g: &Self::Form,
         h: &Self::Form,
     ) -> Result<Self::Form, Self::SumConstructionError> {
-        self.context
+        let g = self
+            .context
             .sum(&g.underlying, &h.underlying)
-            .map_err(PFreeConstructionError::Underlying)
-            .and_then(|g| {
-                self.context
-                    .to_p_free(g)
-                    .map_err(|_| PFreeConstructionError::NotPFree)
-            })
+            .map_err(PFreeConstructionError::Underlying)?;
+        if self.underlying().is_p_free(&g) {
+            Ok(PFreeForm::new_unchecked(g))
+        } else {
+            Err(PFreeConstructionError::NotPFree(self.underlying().base(g)))
+        }
+    }
+
+    fn base(&self, game: Self::Form) -> Self::BaseForm {
+        self.underlying().base(game.to_underlying())
+    }
+
+    fn base_context(&self) -> &impl GameFormContext<Form = Self::BaseForm> {
+        self.underlying().base_context()
     }
 }
 
@@ -214,5 +244,11 @@ impl<C> PFreeContext for PFreeFormContext<C> where
 impl std::fmt::Display for PFreeForm<StandardForm> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         StandardFormContext.fmt(&self.underlying, f)
+    }
+}
+
+impl std::fmt::Display for PFreeForm<DeadEndingForm<StandardForm>> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        DeadEndingFormContext::new(&StandardFormContext).fmt(&self.underlying, f)
     }
 }

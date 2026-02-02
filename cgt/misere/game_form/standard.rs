@@ -48,17 +48,18 @@ pub struct StandardFormContext;
 
 impl GameFormContext for StandardFormContext {
     type Form = StandardForm;
+    type BaseForm = StandardForm;
 
-    type ConstructionError = Infallible;
-    type SumConstructionError = Infallible;
-    type ConjugateConstructionError = Infallible;
+    type DicoticConstructionError = Infallible;
     type IntegerConstructionError = Infallible;
+    type ConjugateConstructionError = Infallible;
+    type SumConstructionError = Infallible;
 
     fn new(
         &self,
         left: impl IntoIterator<Item = Self::Form>,
         right: impl IntoIterator<Item = Self::Form>,
-    ) -> Result<Self::Form, Self::ConstructionError> {
+    ) -> Result<Self::Form, Self::DicoticConstructionError> {
         Ok(StandardForm::new(left, right))
     }
 
@@ -76,6 +77,14 @@ impl GameFormContext for StandardFormContext {
 
     fn total_eq(&self, lhs: &Self::Form, rhs: &Self::Form) -> bool {
         TotalWrappable::total_eq(lhs, rhs)
+    }
+
+    fn base(&self, game: Self::Form) -> Self::BaseForm {
+        game
+    }
+
+    fn base_context(&self) -> &impl GameFormContext<Form = Self::BaseForm> {
+        self
     }
 }
 
