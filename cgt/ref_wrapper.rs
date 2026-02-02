@@ -13,28 +13,32 @@ macro_rules! impl_ref_wrapper {
         }
 
         impl $wrapper {
-            #[allow(dead_code, missing_docs)]
+            /// Wrap a reference to the underlying type
+            #[allow(dead_code)]
             #[inline(always)]
             $struct_vis fn from_inner(inner: &$inner) -> &$wrapper {
                 // SAFETY: repr(transparent)
                 unsafe { &*(::std::ptr::from_ref(inner) as *const $wrapper) }
             }
 
-            #[allow(dead_code, missing_docs)]
+            /// Wrap a mutable reference to the underlying type
+            #[allow(dead_code)]
             #[inline(always)]
             $struct_vis fn from_inner_mut(inner: &mut $inner) -> &mut $wrapper {
                 // SAFETY: repr(transparent)
                 unsafe { &mut *(::std::ptr::from_mut(inner) as *mut $wrapper) }
             }
 
-            #[allow(dead_code, missing_docs)]
+            /// Unwrap a reference into the underlying type
+            #[allow(dead_code)]
             #[inline(always)]
             $struct_vis fn to_inner(&self) -> &$inner {
                 // SAFETY: repr(transparent)
                 unsafe { &*(::std::ptr::from_ref(self) as *const $inner) }
             }
 
-            #[allow(dead_code, missing_docs)]
+            /// Unwrap a mutable reference into the underlying type
+            #[allow(dead_code)]
             #[inline(always)]
             $struct_vis fn to_inner_mut(&mut self) -> &mut $inner {
                 // SAFETY: repr(transparent)

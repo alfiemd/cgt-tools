@@ -55,6 +55,8 @@ impl<G> PFreeForm<G> {
 }
 
 pub trait PFreeContext: GameFormContext<IntegerConstructionError = Infallible> {
+    // FIXME: Use base forms instead of unwraps
+
     fn tipping_point(&self, game: &Self::Form, player: Player) -> u32 {
         match player {
             Player::Left => {
@@ -243,12 +245,16 @@ impl<C> PFreeContext for PFreeFormContext<C> where
 
 impl std::fmt::Display for PFreeForm<StandardForm> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        StandardFormContext.fmt(&self.underlying, f)
+        write!(f, "{}", StandardFormContext.display(&self.underlying))
     }
 }
 
 impl std::fmt::Display for PFreeForm<DeadEndingForm<StandardForm>> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        DeadEndingFormContext::new(&StandardFormContext).fmt(&self.underlying, f)
+        write!(
+            f,
+            "{}",
+            DeadEndingFormContext::new(&StandardFormContext).display(&self.underlying)
+        )
     }
 }

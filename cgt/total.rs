@@ -163,7 +163,8 @@ impl<T> AsRef<T> for TotalWrapper<T> {
 
 macro_rules! unsafe_impl_inner_collections {
     ($wrapper:ty, $inner:ty, $vis:vis) => {
-        #[allow(dead_code, missing_docs)]
+        #[doc = concat!("Unwrap each [`Vec`] element into `", stringify!($inner), "`. O(0)")]
+        #[allow(dead_code)]
         #[inline(always)]
         $vis fn into_inner_vec(moves: Vec<$wrapper>) -> Vec<$inner> {
             let mut md = ::core::mem::ManuallyDrop::new(moves);
@@ -173,7 +174,8 @@ macro_rules! unsafe_impl_inner_collections {
             unsafe { Vec::from_raw_parts(ptr.cast::<$inner>(), len, capacity) }
         }
 
-        #[allow(dead_code, missing_docs)]
+        #[doc = concat!("Wrap each [`Vec`] element into `", stringify!($wrapper), "`. O(0)")]
+        #[allow(dead_code)]
         #[inline(always)]
         $vis fn from_inner_vec(moves: Vec<$inner>) -> Vec<$wrapper> {
             let mut md = ::core::mem::ManuallyDrop::new(moves);
@@ -183,7 +185,8 @@ macro_rules! unsafe_impl_inner_collections {
             unsafe { Vec::from_raw_parts(ptr.cast::<$wrapper>(), len, capacity) }
         }
 
-        #[allow(dead_code, missing_docs)]
+        #[doc = concat!("Unwrap each [`slice`] element into `", stringify!($inner), "`. O(0)")]
+        #[allow(dead_code)]
         #[inline(always)]
         $vis fn into_inner_slice(moves: &[$wrapper]) -> &[$inner] {
             let md = ::core::mem::ManuallyDrop::new(moves);
@@ -192,7 +195,8 @@ macro_rules! unsafe_impl_inner_collections {
             unsafe { core::slice::from_raw_parts(ptr.cast::<$inner>(), len) }
         }
 
-        #[allow(dead_code, missing_docs)]
+        #[doc = concat!("Unwrap each [`slice`] element into `", stringify!($wrapper), "`. O(0)")]
+        #[allow(dead_code)]
         #[inline(always)]
         $vis fn from_inner_slice(moves: &[$inner]) -> &[$wrapper] {
             let md = ::core::mem::ManuallyDrop::new(moves);
@@ -202,7 +206,7 @@ macro_rules! unsafe_impl_inner_collections {
         }
 
         /// Create new reference to wrapper
-        #[allow(dead_code, missing_docs)]
+        #[allow(dead_code)]
         #[inline(always)]
         $vis fn from_ref(inner: &$inner) -> &$wrapper {
             unsafe { &*core::ptr::from_ref::<$inner>(inner).cast::<$wrapper>() }

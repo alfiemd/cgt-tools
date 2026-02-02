@@ -102,6 +102,6 @@ impl FromStr for StandardForm {
 
 impl std::fmt::Display for StandardForm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        StandardFormContext.fmt(self, f)
+        write!(f, "{}", StandardFormContext.display(self))
     }
 }

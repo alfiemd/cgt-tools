@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use crate::{
     misere::game_form::Outcome,
     parsing::{Parser, lexeme, try_option},
@@ -7,41 +5,49 @@ use crate::{
 };
 use std::{cmp::Ordering, convert::Infallible};
 
+/// Propagated error that occurred during [`GameFormContext::arbitrary`]
 #[cfg(any(test, feature = "quickcheck"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ArbitraryError<Construction, Integer> {
-    Construction(Construction),
+pub enum ArbitraryError<Dicotic, Integer> {
+    /// Generated game form could not be constructed from Left and Right options
+    Dicotic(Dicotic),
+
+    /// Generated integer could be be constructed as a game form
     Integer(Integer),
 }
 
 #[cfg(any(test, feature = "quickcheck"))]
-impl<G, Construction, Integer> ConstructionError<G> for ArbitraryError<Construction, Integer>
+impl<G, Dicotic, Integer> ConstructionError<G> for ArbitraryError<Dicotic, Integer>
 where
-    Construction: ConstructionError<G>,
+    Dicotic: ConstructionError<G>,
     Integer: ConstructionError<G>,
 {
     fn recover(self) -> G {
         match self {
-            ArbitraryError::Construction(err) => err.recover(),
+            ArbitraryError::Dicotic(err) => err.recover(),
             ArbitraryError::Integer(err) => err.recover(),
         }
     }
 }
 
 #[cfg(any(test, feature = "quickcheck"))]
-impl<Construction, Integer> crate::result::Void for ArbitraryError<Construction, Integer>
+impl<Dicotic, Integer> crate::result::Void for ArbitraryError<Dicotic, Integer>
 where
-    Construction: crate::result::Void,
+    Dicotic: crate::result::Void,
     Integer: crate::result::Void,
 {
     fn absurd<T>(self) -> T {
         match self {
-            ArbitraryError::Construction(err) => crate::result::Void::absurd(err),
+            ArbitraryError::Dicotic(err) => crate::result::Void::absurd(err),
             ArbitraryError::Integer(err) => crate::result::Void::absurd(err),
         }
     }
 }
 
+/// Error that occurred when constructing a game form
+///
+/// It allows to recover the underlying game form if the construction would result in a game that
+/// is not included in the restricted set we are working in.
 pub trait ConstructionError<G>: std::fmt::Debug {
     fn recover(self) -> G;
 }
@@ -52,16 +58,38 @@ impl<G> ConstructionError<G> for Infallible {
     }
 }
 
+/// Context for unrestricted game forms
+///
+/// Context pattern allows to abstract away how the game forms are stored and managed in memory
+/// (inline, interning strategy, etc.) and to cache operation results if desired
 #[allow(clippy::missing_errors_doc)]
 pub trait GameFormContext {
+    /// Game form, potentially restricted to some subset
     type Form: Clone;
+
+    /// Unrestricted game form, closed under all usual game operations
     type BaseForm: Clone + std::fmt::Debug;
 
+    // TODO: Rename as it is not actually dicotic as we allow empty iterators in `new`
     type DicoticConstructionError: ConstructionError<Self::BaseForm>;
     type IntegerConstructionError: ConstructionError<Self::BaseForm>;
     type ConjugateConstructionError: ConstructionError<Self::BaseForm>;
     type SumConstructionError: ConstructionError<Self::BaseForm>;
 
+    /// Construct new game form from Left and Right options
+    ///
+    /// # Example
+    /// ```
+    /// # use crate::cgt::misere::game_form::GameFormContext;
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context
+    ///     .new(
+    ///         [context.from_str("{|0}").unwrap()],
+    ///         [context.from_str("{1,2|}").unwrap()],
+    ///     )
+    ///     .unwrap();    
+    /// assert_eq!(context.to_string(&g), "{-1|{1,2|}}");
+    /// ```
     #[allow(clippy::wrong_self_convention)]
     fn new(
         &self,
@@ -69,12 +97,51 @@ pub trait GameFormContext {
         right: impl IntoIterator<Item = Self::Form>,
     ) -> Result<Self::Form, Self::DicoticConstructionError>;
 
+    /// Get player moves
+    ///
+    /// # Example
+    /// ```
+    /// # use crate::cgt::{misere::game_form::GameFormContext, short::partizan::Player};
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.from_str("{1,2|{0|0}}").unwrap();
+    /// assert_eq!(
+    ///     context
+    ///         .moves(&g, Player::Left)
+    ///         .map(|gl| context.to_string(gl))
+    ///         .collect::<Vec<_>>(),
+    ///     vec!["1", "2"]
+    /// );
+    /// assert_eq!(
+    ///     context
+    ///         .moves(&g, Player::Right)
+    ///         .map(|gl| context.to_string(gl))
+    ///         .collect::<Vec<_>>(),
+    ///     vec!["{0|0}"]
+    /// );
+    /// ```
     fn moves<'a>(
         &self,
         game: &'a Self::Form,
         player: Player,
     ) -> impl Iterator<Item = &'a Self::Form>;
 
+    /// Construct new game form equal to the given integer i.e. for `n > 0` `n + 1 = {n|}`
+    /// and analogously for Right.
+    ///
+    /// # Example
+    /// ```
+    /// # use crate::cgt::{misere::game_form::GameFormContext, short::partizan::Player};
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.new_integer(42).unwrap();
+    /// assert_eq!(
+    ///     context
+    ///         .moves(&g, Player::Left)
+    ///         .map(|gl| context.to_string(gl))
+    ///         .collect::<Vec<_>>(),
+    ///     vec!["41"]
+    /// );
+    /// assert_eq!(context.moves(&g, Player::Right).count(), 0);
+    /// ```
     fn new_integer(&self, n: i32) -> Result<Self::Form, Self::IntegerConstructionError> {
         use std::cmp::Ordering;
 
@@ -91,6 +158,15 @@ pub trait GameFormContext {
         }
     }
 
+    /// If the game is an integer, extract it.
+    ///
+    /// # Example
+    /// ```
+    /// # use crate::cgt::misere::game_form::GameFormContext;
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.from_str("{{1|}|}").unwrap();
+    /// assert_eq!(context.to_integer(&g), Some(3));
+    /// ```
     fn to_integer(&self, game: &Self::Form) -> Option<i32> {
         let mut left = self.moves(game, Player::Left);
         let l1 = left.next();
@@ -114,6 +190,16 @@ pub trait GameFormContext {
         }
     }
 
+    /// Return which player wins if passed `player` would to go first
+    ///
+    /// # Example
+    /// ```
+    /// # use cgt::{misere::game_form::GameFormContext, short::partizan::Player};
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.from_str("{1,2|{0|0}}").unwrap();
+    /// assert_eq!(context.player_outcome(&g, Player::Left), Player::Right);
+    /// assert_eq!(context.player_outcome(&g, Player::Right), Player::Right);
+    /// ```
     fn player_outcome(&self, game: &Self::Form, player: Player) -> Player {
         if self.wins_going_first(game, player) {
             player
@@ -122,6 +208,16 @@ pub trait GameFormContext {
         }
     }
 
+    /// Check if passed `player` would win when going first
+    ///
+    /// # Example
+    /// ```
+    /// # use cgt::{misere::game_form::GameFormContext, short::partizan::Player};
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.from_str("{1,2|{0|0}}").unwrap();
+    /// assert!(!context.wins_going_first(&g, Player::Left));
+    /// assert!(context.wins_going_first(&g, Player::Right));
+    /// ```
     fn wins_going_first(&self, game: &Self::Form, player: Player) -> bool {
         self.moves(game, player).count() == 0
             || self
@@ -129,6 +225,15 @@ pub trait GameFormContext {
                 .any(|g| !self.wins_going_first(g, player.opposite()))
     }
 
+    /// Return outcome of the game, no matter who goes first
+    ///
+    /// # Example
+    /// ```
+    /// # use cgt::{misere::game_form::{GameFormContext, Outcome}, short::partizan::Player};
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let g = context.from_str("{1,2|{0|0}}").unwrap();
+    /// assert_eq!(context.outcome(&g), Outcome::R);
+    /// ```
     fn outcome(&self, game: &Self::Form) -> Outcome {
         match (
             self.wins_going_first(game, Player::Left),
@@ -175,10 +280,29 @@ pub trait GameFormContext {
             && Player::forall(|p| self.moves(game, p).all(|g| self.is_blocking(g)))
     }
 
+    /// Implementation specific total comparison function
+    ///
+    /// Intended to be used when storing game forms in data structures that require
+    /// total ordering that can be different from game equality
     fn total_cmp(&self, lhs: &Self::Form, rhs: &Self::Form) -> Ordering;
 
+    /// Implementation specific total equality function
     fn total_eq(&self, lhs: &Self::Form, rhs: &Self::Form) -> bool;
 
+    /// Construct all games born in the next day from the specified options.
+    ///
+    /// Note that the implementation may filter out forms that would be invalid.
+    ///
+    /// Example
+    /// ```
+    /// # use cgt::misere::game_form::GameFormContext;
+    /// # let context = &cgt::misere::game_form::StandardFormContext;
+    /// let day1 = context
+    ///     .next_day(&[context.new_integer(0).unwrap()])
+    ///     .map(|g| context.to_string(&g))
+    ///     .collect::<Vec<_>>();
+    /// assert_eq!(day1, vec!["0", "-1", "1", "{0|0}"]);
+    /// ```
     fn next_day(&self, day: &[Self::Form]) -> impl Iterator<Item = Self::Form> {
         use itertools::Itertools;
 
@@ -291,29 +415,6 @@ pub trait GameFormContext {
         }
     }
 
-    fn fmt(&self, game: &Self::Form, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.to_integer(game) {
-            Some(n) => write!(f, "{n}"),
-            None => {
-                write!(f, "{{")?;
-                for (idx, gl) in self.moves(game, Player::Left).enumerate() {
-                    if idx > 0 {
-                        write!(f, ",")?;
-                    }
-                    self.fmt(gl, f)?;
-                }
-                write!(f, "|")?;
-                for (idx, gr) in self.moves(game, Player::Right).enumerate() {
-                    if idx > 0 {
-                        write!(f, ",")?;
-                    }
-                    self.fmt(gr, f)?;
-                }
-                write!(f, "}}")
-            }
-        }
-    }
-
     fn base(&self, game: Self::Form) -> Self::BaseForm;
 
     fn base_context(&self) -> &impl GameFormContext<Form = Self::BaseForm>;
@@ -351,7 +452,7 @@ pub trait GameFormContext {
             let left = mk_player();
             let right = mk_player();
 
-            self.new(left, right).map_err(ArbitraryError::Construction)
+            self.new(left, right).map_err(ArbitraryError::Dicotic)
         }
     }
 
@@ -402,6 +503,7 @@ pub trait GameFormContext {
     }
 }
 
+/// Opaque helper type to use game forms in format strings
 struct DisplayGame<'a, C>
 where
     C: GameFormContext + ?Sized,
@@ -415,6 +517,41 @@ where
     C: GameFormContext + ?Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.context.fmt(self.form, f)
+        match self.context.to_integer(self.form) {
+            Some(n) => write!(f, "{n}"),
+            None => {
+                write!(f, "{{")?;
+                for (idx, gl) in self.context.moves(self.form, Player::Left).enumerate() {
+                    if idx > 0 {
+                        write!(f, ",")?;
+                    }
+                    DisplayGame {
+                        context: self.context,
+                        form: gl,
+                    }
+                    .fmt(f)?;
+                }
+                write!(f, "|")?;
+                for (idx, gr) in self.context.moves(self.form, Player::Right).enumerate() {
+                    if idx > 0 {
+                        write!(f, ",")?;
+                    }
+                    DisplayGame {
+                        context: self.context,
+                        form: gr,
+                    }
+                    .fmt(f)?;
+                }
+                write!(f, "}}")
+            }
+        }
     }
+}
+
+#[test]
+fn nested_parsing() {
+    use crate::misere::game_form::GameFormContext;
+    let context = &crate::misere::game_form::StandardFormContext;
+
+    assert!(context.from_str("{{2|{|}},1|{0|0}}").is_some());
 }

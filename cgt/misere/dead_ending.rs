@@ -229,7 +229,7 @@ impl<C> DeadEndingContext for DeadEndingFormContext<C> where C: GameFormContext 
 
 impl std::fmt::Display for DeadEndingForm<StandardForm> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        StandardFormContext.fmt(&self.underlying, f)
+        write!(f, "{}", StandardFormContext.display(&self.underlying))
     }
 }
 
