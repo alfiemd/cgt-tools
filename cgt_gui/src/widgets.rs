@@ -9,18 +9,44 @@ use cgt::{
 };
 use std::{ops::DerefMut, time::SystemTime};
 
-pub mod amazons;
-pub mod canonical_form;
-pub mod digraph_placement;
-pub mod domineering;
-pub mod fission;
+mod amazons;
+pub use amazons::AmazonsWindow;
+
+mod canonical_form;
+pub use canonical_form::CanonicalFormWindow;
+
+mod dead_ending;
+pub use dead_ending::DeadEndingWindow;
+
+mod digraph_placement;
+pub use digraph_placement::DigraphPlacementWindow;
+
+mod domineering;
+pub use domineering::DomineeringWindow;
+
+mod fission;
+pub use fission::FissionWindow;
+
 pub mod graph_editor;
-pub mod konane;
-pub mod quelhas;
-pub mod resolving_set;
-pub mod ski_jumps;
-pub mod snort;
-pub mod toads_and_frogs;
+pub use graph_editor::GraphWindow;
+
+mod konane;
+pub use konane::KonaneWindow;
+
+mod quelhas;
+pub use quelhas::QuelhasWindow;
+
+mod resolving_set;
+pub use resolving_set::ResolvingSetWindow;
+
+mod ski_jumps;
+pub use ski_jumps::SkiJumpsWindow;
+
+mod snort;
+pub use snort::SnortWindow;
+
+mod toads_and_frogs;
+pub use toads_and_frogs::ToadsAndFrogsWindow;
 
 pub const TILE_SIZE: f32 = 64.0;
 pub const TILE_SPACING: f32 = 4.0;

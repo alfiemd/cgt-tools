@@ -1,9 +1,7 @@
 use crate::widgets::{
-    amazons::AmazonsWindow, canonical_form::CanonicalFormWindow,
-    digraph_placement::DigraphPlacementWindow, domineering::DomineeringWindow,
-    fission::FissionWindow, graph_editor::GraphWindow, konane::KonaneWindow,
-    quelhas::QuelhasWindow, resolving_set::ResolvingSetWindow, ski_jumps::SkiJumpsWindow,
-    snort::SnortWindow, toads_and_frogs::ToadsAndFrogsWindow,
+    AmazonsWindow, CanonicalFormWindow, DeadEndingWindow, DigraphPlacementWindow,
+    DomineeringWindow, FissionWindow, GraphWindow, KonaneWindow, QuelhasWindow, ResolvingSetWindow,
+    SkiJumpsWindow, SnortWindow, ToadsAndFrogsWindow,
 };
 use cgt::{
     graph::adjacency_matrix::{directed::DirectedGraph, undirected::UndirectedGraph},
@@ -548,6 +546,10 @@ fn main() {
                 ui.separator();
                 if ui.menu_item("Quelhas") {
                     new_window!(QuelhasWindow);
+                }
+                ui.separator();
+                if ui.menu_item("Dead-ending") {
+                    new_window!(DeadEndingWindow);
                 }
             }
             if let Some(_debug_menu) = ui.begin_menu("Debug") {
