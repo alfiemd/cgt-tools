@@ -352,9 +352,9 @@ where
 pub fn run(args: Args) -> anyhow::Result<()> {
     match args.variant {
         Variant::DeadEnding => {
-            let context = PFreeFormContext::new(DeadEndingFormContext::new(&StandardFormContext));
-            let args = RichArgs::new(context, &args)?;
-            show_results(context, &args);
+            let context = PFreeFormContext::new(DeadEndingFormContext::new(StandardFormContext));
+            let args = RichArgs::new(&context, &args)?;
+            show_results(&context, &args);
         }
         Variant::Blocking => todo!(),
     }

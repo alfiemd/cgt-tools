@@ -9,15 +9,13 @@ use crate::{
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
 pub struct DeadEndingFormContext<C> {
     context: C,
 }
 
 impl<C> DeadEndingFormContext<C> {
-    pub const fn new(context: &C) -> &Self {
-        // SAFETY: We are #[repr(transparent)] so reference cast is safe
-        unsafe { &*(::std::ptr::from_ref(context).cast::<Self>()) }
+    pub const fn new(context: C) -> Self {
+        Self { context }
     }
 
     pub const fn underlying(&self) -> &C {
@@ -235,7 +233,7 @@ impl std::fmt::Display for DeadEndingForm<StandardForm> {
 
 #[test]
 fn waiting_protected() {
-    let context = DeadEndingFormContext::new(&StandardFormContext);
+    let context = DeadEndingFormContext::new(StandardFormContext);
 
     let m0 = context.waiting_protected(0);
     assert_eq!(m0.to_string(), "0");
@@ -252,7 +250,7 @@ fn waiting_protected() {
 
 #[test]
 fn relations() {
-    let context = DeadEndingFormContext::new(&StandardFormContext);
+    let context = DeadEndingFormContext::new(StandardFormContext);
 
     let g = context.from_str("{2|4}").unwrap();
     let h = context.from_str("{2|}").unwrap();

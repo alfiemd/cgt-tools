@@ -1,11 +1,8 @@
 use crate::commands::p_free::order;
 use anyhow::Result;
-use cgt::{
-    misere::{
-        game_form::{GameFormContext, Outcome, StandardFormContext},
-        p_free::{PFreeContext, PFreeFormContext},
-    },
-    result::UnwrapInfallible,
+use cgt::misere::{
+    game_form::{ConstructionError, GameFormContext, Outcome, StandardFormContext},
+    p_free::{PFreeContext, PFreeFormContext},
 };
 use clap::Parser;
 use quickcheck::Gen;
@@ -108,13 +105,13 @@ impl TexDisplay for PossibleOutcome {
 
 #[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> Result<()> {
-    run_impl(args, &StandardFormContext)
+    run_impl(args, &PFreeFormContext::new(StandardFormContext))
 }
 
 #[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 fn run_impl<C>(args: Args, context: &C) -> Result<()>
 where
-    C: GameFormContext<IntegerConstructionError = Infallible, SumConstructionError = Infallible>,
+    C: PFreeContext<IntegerConstructionError = Infallible>,
 {
     let finished = Arc::new(AtomicBool::new(false));
     ctrlc::set_handler({
@@ -124,8 +121,6 @@ where
         }
     })
     .unwrap();
-
-    let context = PFreeFormContext::new(context);
 
     let mut known = BTreeMap::<TippingPoints, PossibleOutcome>::new();
 
@@ -150,11 +145,10 @@ where
                 hr: context.right_tipping_point(&h),
             };
 
-            let sum = context
-                .underlying()
-                .sum(g.underlying(), h.underlying())
-                .unwrap_infallible();
-            let outcome = context.underlying().outcome(&sum);
+            let outcome = match context.sum(&g, &h) {
+                Ok(sum) => context.outcome(&sum),
+                Err(err) => context.base_context().outcome(&err.recover()),
+            };
             known
                 .entry(tipping_points)
                 .or_insert(PossibleOutcome::none())

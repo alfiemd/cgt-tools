@@ -13,15 +13,13 @@ use crate::{
 use std::{convert::Infallible, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
 pub struct PFreeFormContext<C> {
     context: C,
 }
 
 impl<C> PFreeFormContext<C> {
-    pub const fn new(context: &C) -> &Self {
-        // SAFETY: We are #[repr(transparent)] so reference cast is safe
-        unsafe { &*(::std::ptr::from_ref(context).cast::<Self>()) }
+    pub const fn new(context: C) -> Self {
+        Self { context }
     }
 
     pub const fn underlying(&self) -> &C {
@@ -254,7 +252,7 @@ impl std::fmt::Display for PFreeForm<DeadEndingForm<StandardForm>> {
         write!(
             f,
             "{}",
-            DeadEndingFormContext::new(&StandardFormContext).display(&self.underlying)
+            DeadEndingFormContext::new(StandardFormContext).display(&self.underlying)
         )
     }
 }
