@@ -1,9 +1,9 @@
 use crate::{
     misere::game_form::Outcome,
-    parsing::{Parser, lexeme, try_option},
+    parsing::{Parser, lexeme},
     short::partizan::Player,
 };
-use std::{cmp::Ordering, convert::Infallible};
+use std::{cmp::Ordering, convert::Infallible, error::Error};
 
 /// Propagated error that occurred during [`GameFormContext::arbitrary`]
 #[cfg(any(test, feature = "quickcheck"))]
@@ -40,6 +40,46 @@ where
         match self {
             ArbitraryError::Dicotic(err) => crate::result::Void::absurd(err),
             ArbitraryError::Integer(err) => crate::result::Void::absurd(err),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ParseError<Dicotic, Integer> {
+    /// Parsed form is invalid
+    Dicotic(Dicotic),
+
+    /// Parsed integer would be an invalid form
+    Integer(Integer),
+
+    /// Malformed input
+    MalformedInput,
+}
+
+impl<Dicotic, Integer> std::fmt::Display for ParseError<Dicotic, Integer>
+where
+    Dicotic: std::fmt::Display,
+    Integer: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::Dicotic(err) => write!(f, "parse error: {}", err),
+            ParseError::Integer(err) => write!(f, "parse error: {}", err),
+            ParseError::MalformedInput => write!(f, "parse error: malformed input"),
+        }
+    }
+}
+
+impl<Dicotic, Integer> Error for ParseError<Dicotic, Integer>
+where
+    Dicotic: Error + 'static,
+    Integer: Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ParseError::Dicotic(err) => Some(err),
+            ParseError::Integer(err) => Some(err),
+            ParseError::MalformedInput => None,
         }
     }
 }
@@ -362,11 +402,18 @@ pub trait GameFormContext {
             .unwrap_or(0)
     }
 
-    fn parse_list<'a>(&'a self, mut p: Parser<'a>) -> Option<(Parser<'a>, Vec<Self::Form>)> {
+    fn parse_list<'a>(
+        &'a self,
+        mut p: Parser<'a>,
+    ) -> Result<
+        (Parser<'a>, Vec<Self::Form>),
+        ParseError<Self::DicoticConstructionError, Self::IntegerConstructionError>,
+    > {
         let mut acc = Vec::new();
         loop {
-            match lexeme!(p, |p| self.parse(p)) {
-                Some((cf_p, cf)) => {
+            p = p.trim_whitespace();
+            match self.parse(p) {
+                Ok((cf_p, cf)) => {
                     acc.push(cf);
                     p = cf_p;
                     p = p.trim_whitespace();
@@ -374,34 +421,51 @@ pub trait GameFormContext {
                         Some(pp) => {
                             p = pp.trim_whitespace();
                         }
-                        None => return Some((p, acc)),
+                        None => return Ok((p, acc)),
                     }
                 }
-                None => return Some((p, acc)),
+                Err(ParseError::MalformedInput) => return Ok((p, acc)),
+                Err(err) => return Err(err),
             }
         }
     }
 
-    fn parse<'a>(&'a self, p: Parser<'a>) -> Option<(Parser<'a>, Self::Form)> {
+    fn parse<'a>(
+        &'a self,
+        p: Parser<'a>,
+    ) -> Result<
+        (Parser<'a>, Self::Form),
+        ParseError<Self::DicoticConstructionError, Self::IntegerConstructionError>,
+    > {
         let p = p.trim_whitespace();
         if let Some(p) = p.parse_ascii_char('{') {
-            let (p, left) = try_option!(self.parse_list(p));
-            let p = try_option!(p.parse_ascii_char('|'));
-            let (p, right) = try_option!(self.parse_list(p));
-            let p = try_option!(p.parse_ascii_char('}'));
+            let (p, left) = self.parse_list(p)?;
+            let p = p.parse_ascii_char('|').ok_or(ParseError::MalformedInput)?;
+            let (p, right) = self.parse_list(p)?;
+            let p = p.parse_ascii_char('}').ok_or(ParseError::MalformedInput)?;
             let p = p.trim_whitespace();
-            Some((p, self.new(left, right).ok()?))
+            Ok((p, self.new(left, right).map_err(ParseError::Dicotic)?))
         } else {
             // TODO: Generalize number parsers
-            let (p, integer) = try_option!(lexeme!(p, Parser::parse_i64));
-            Some((p, self.new_integer(integer as i32).ok()?))
+            let (p, integer) = lexeme!(p, Parser::parse_i64).ok_or(ParseError::MalformedInput)?;
+            Ok((
+                p,
+                self.new_integer(integer as i32)
+                    .map_err(ParseError::Integer)?,
+            ))
         }
     }
 
     #[allow(clippy::wrong_self_convention)]
-    fn from_str(&self, input: &str) -> Option<Self::Form> {
+    fn from_str(
+        &self,
+        input: &str,
+    ) -> Result<
+        Self::Form,
+        ParseError<Self::DicoticConstructionError, Self::IntegerConstructionError>,
+    > {
         let (_, g) = self.parse(Parser::new(input))?;
-        Some(g)
+        Ok(g)
     }
 
     fn to_string(&self, game: &Self::Form) -> String {
@@ -549,9 +613,15 @@ where
 }
 
 #[test]
-fn nested_parsing() {
+fn parsing() {
     use crate::misere::game_form::GameFormContext;
     let context = &crate::misere::game_form::StandardFormContext;
 
-    assert!(context.from_str("{{2|{|}},1|{0|0}}").is_some());
+    assert!(context.from_str("{{2|{|}},1|{0|0}}").is_ok());
+    assert!(context.from_str("{|{|1}}").is_ok());
+    assert!(
+        context
+            .from_str("  {  {  2  |  {  | }  }  ,  1  |  {  0  |  0  }  }  ")
+            .is_ok()
+    );
 }

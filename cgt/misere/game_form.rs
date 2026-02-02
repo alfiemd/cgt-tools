@@ -3,7 +3,7 @@
 mod context;
 mod standard;
 
-pub use context::{ConstructionError, GameFormContext};
+pub use context::{ConstructionError, GameFormContext, ParseError};
 pub use standard::{StandardForm, StandardFormContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

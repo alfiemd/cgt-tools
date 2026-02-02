@@ -10,7 +10,7 @@ use crate::{
     result::UnwrapInfallible,
     short::partizan::Player,
 };
-use std::{convert::Infallible, fmt};
+use std::{convert::Infallible, error::Error, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PFreeFormContext<C> {
@@ -139,6 +139,37 @@ pub trait PFreeContext: GameFormContext<IntegerConstructionError = Infallible> {
 pub enum PFreeConstructionError<G, E> {
     NotPFree(G),
     Underlying(E),
+}
+
+// NOTE: G: Display will be annoying for interner context
+impl<G, E> std::fmt::Display for PFreeConstructionError<G, E>
+where
+    G: std::fmt::Display,
+    E: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PFreeConstructionError::NotPFree(g) => {
+                write!(f, "could not construct P-free game: `{}` is not P-free", g)
+            }
+            PFreeConstructionError::Underlying(err) => {
+                write!(f, "could not construct the underlying form: {}", err)
+            }
+        }
+    }
+}
+
+impl<G, E> Error for PFreeConstructionError<G, E>
+where
+    G: std::fmt::Debug + std::fmt::Display,
+    E: std::fmt::Debug + Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            PFreeConstructionError::NotPFree(_) => None,
+            PFreeConstructionError::Underlying(err) => Some(err),
+        }
+    }
 }
 
 impl<G, E> ConstructionError<G> for PFreeConstructionError<G, E>

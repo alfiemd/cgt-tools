@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use cgt::misere::{
     dead_ending::DeadEndingFormContext,
     game_form::{ConstructionError, GameFormContext, Outcome, StandardFormContext},
@@ -55,14 +57,12 @@ impl<G> RichArgs<G> {
     pub fn new<C>(context: &C, args: &Args) -> anyhow::Result<RichArgs<G>>
     where
         C: GameFormContext<Form = G>,
+        C::IntegerConstructionError: Sync + Send + Error + 'static,
+        C::DicoticConstructionError: Sync + Send + Error + 'static,
     {
         Ok(RichArgs {
-            lhs: context
-                .from_str(&args.lhs)
-                .ok_or_else(|| anyhow::anyhow!("Could not parse `lhs`"))?,
-            rhs: context
-                .from_str(&args.rhs)
-                .ok_or_else(|| anyhow::anyhow!("Could not parse `rhs`"))?,
+            lhs: context.from_str(&args.lhs)?,
+            rhs: context.from_str(&args.rhs)?,
             size: args.size,
             max_attempts: args.max_attempts,
         })

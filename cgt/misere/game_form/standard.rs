@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use crate::{
-    misere::game_form::GameFormContext,
+    misere::game_form::{GameFormContext, ParseError},
     short::partizan::Player,
     total::{TotalWrappable, impl_total_wrapper},
 };
@@ -89,14 +89,10 @@ impl GameFormContext for StandardFormContext {
 }
 
 impl FromStr for StandardForm {
-    type Err = &'static str;
+    type Err = ParseError<Infallible, Infallible>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match StandardFormContext.parse(crate::parsing::Parser::new(s)) {
-            Some((p, result)) if p.input.is_empty() => Ok(result),
-            Some(_) => Err("Parse error: leftover input"),
-            None => Err("Parse error: parser failed"),
-        }
+        StandardFormContext.from_str(s)
     }
 }
 

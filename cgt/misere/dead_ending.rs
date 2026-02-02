@@ -6,7 +6,7 @@ use crate::{
     },
     short::partizan::Player,
 };
-use std::fmt;
+use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeadEndingFormContext<C> {
@@ -52,6 +52,41 @@ impl<G> DeadEndingForm<G> {
 pub enum DeadEndingConstructionError<G, E> {
     NotDeadEnding(G),
     Underlying(E),
+}
+
+// NOTE: G: Display will be annoying for interner context
+impl<G, E> std::fmt::Display for DeadEndingConstructionError<G, E>
+where
+    G: std::fmt::Display,
+    E: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeadEndingConstructionError::NotDeadEnding(g) => {
+                write!(
+                    f,
+                    "could not construct dead-ending game: `{}` is not dead-ending",
+                    g
+                )
+            }
+            DeadEndingConstructionError::Underlying(err) => {
+                write!(f, "could not construct the underlying form: {}", err)
+            }
+        }
+    }
+}
+
+impl<G, E> Error for DeadEndingConstructionError<G, E>
+where
+    G: std::fmt::Debug + std::fmt::Display,
+    E: std::fmt::Debug + Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            DeadEndingConstructionError::NotDeadEnding(_) => None,
+            DeadEndingConstructionError::Underlying(err) => Some(err),
+        }
+    }
 }
 
 impl<G, E> ConstructionError<G> for DeadEndingConstructionError<G, E>
@@ -259,4 +294,16 @@ fn relations() {
     let g = context.from_str("1").unwrap();
     let h = context.from_str("{0|4}").unwrap();
     assert!(context.ge_mod_dead_ending(&g, &h));
+}
+
+#[test]
+fn parsing() {
+    use crate::misere::game_form::ParseError;
+    let context = DeadEndingFormContext::new(StandardFormContext);
+
+    assert!(
+        context
+            .from_str("{|{|1}}")
+            .is_err_and(|err| matches!(err, ParseError::Dicotic(_)))
+    );
 }
