@@ -476,6 +476,15 @@ pub trait GameFormContext {
         DisplayGame {
             context: self,
             form: game,
+            format: DisplayFormat::Plain,
+        }
+    }
+
+    fn display_tex<'a>(&'a self, game: &'a Self::Form) -> impl std::fmt::Display + 'a {
+        DisplayGame {
+            context: self,
+            form: game,
+            format: DisplayFormat::Tex,
         }
     }
 
@@ -567,6 +576,12 @@ pub trait GameFormContext {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum DisplayFormat {
+    Plain,
+    Tex,
+}
+
 /// Opaque helper type to use game forms in format strings
 struct DisplayGame<'a, C>
 where
@@ -574,6 +589,7 @@ where
 {
     context: &'a C,
     form: &'a C::Form,
+    format: DisplayFormat,
 }
 
 impl<C> std::fmt::Display for DisplayGame<'_, C>
@@ -584,7 +600,11 @@ where
         match self.context.to_integer(self.form) {
             Some(n) => write!(f, "{n}"),
             None => {
-                write!(f, "{{")?;
+                match self.format {
+                    DisplayFormat::Plain => write!(f, "{{")?,
+                    DisplayFormat::Tex => write!(f, "\\left\\{{")?,
+                }
+
                 for (idx, gl) in self.context.moves(self.form, Player::Left).enumerate() {
                     if idx > 0 {
                         write!(f, ",")?;
@@ -592,10 +612,16 @@ where
                     DisplayGame {
                         context: self.context,
                         form: gl,
+                        format: self.format,
                     }
                     .fmt(f)?;
                 }
-                write!(f, "|")?;
+
+                match self.format {
+                    DisplayFormat::Plain => write!(f, "|")?,
+                    DisplayFormat::Tex => write!(f, " \\mid ")?,
+                }
+
                 for (idx, gr) in self.context.moves(self.form, Player::Right).enumerate() {
                     if idx > 0 {
                         write!(f, ",")?;
@@ -603,10 +629,17 @@ where
                     DisplayGame {
                         context: self.context,
                         form: gr,
+                        format: self.format,
                     }
                     .fmt(f)?;
                 }
-                write!(f, "}}")
+
+                match self.format {
+                    DisplayFormat::Plain => write!(f, "}}")?,
+                    DisplayFormat::Tex => write!(f, "\\right\\}}")?,
+                }
+
+                Ok(())
             }
         }
     }
