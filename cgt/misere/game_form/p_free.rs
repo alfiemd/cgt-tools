@@ -1,11 +1,9 @@
 #![allow(missing_docs)]
 
 use crate::{
-    misere::{
-        dead_ending::{DeadEndingForm, DeadEndingFormContext},
-        game_form::{
-            ConstructionError, GameFormContext, Outcome, StandardForm, StandardFormContext,
-        },
+    misere::game_form::{
+        ConstructionError, DeadEndingForm, DeadEndingFormContext, GameFormContext, Outcome,
+        StandardForm, StandardFormContext,
     },
     result::UnwrapInfallible,
     short::partizan::Player,

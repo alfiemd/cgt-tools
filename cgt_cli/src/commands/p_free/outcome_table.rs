@@ -1,8 +1,8 @@
 use crate::commands::p_free::order;
 use anyhow::Result;
-use cgt::misere::{
-    game_form::{ConstructionError, GameFormContext, Outcome, StandardFormContext},
-    p_free::{PFreeContext, PFreeFormContext},
+use cgt::misere::game_form::{
+    ConstructionError, GameFormContext, Outcome, PFreeContext, PFreeFormContext,
+    StandardFormContext,
 };
 use clap::Parser;
 use quickcheck::Gen;

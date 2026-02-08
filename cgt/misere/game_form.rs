@@ -1,9 +1,15 @@
 #![allow(missing_docs)]
 
 mod context;
+mod dead_ending;
+mod p_free;
 mod standard;
 
 pub use context::{ConstructionError, GameFormContext, ParseError};
+pub use dead_ending::{
+    DeadEndingConstructionError, DeadEndingContext, DeadEndingForm, DeadEndingFormContext,
+};
+pub use p_free::{PFreeConstructionError, PFreeContext, PFreeForm, PFreeFormContext};
 pub use standard::{StandardForm, StandardFormContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

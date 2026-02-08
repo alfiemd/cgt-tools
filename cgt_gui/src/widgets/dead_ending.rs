@@ -1,11 +1,9 @@
-use std::error::Error;
-
 use crate::{GuiContext, IsCgtWindow, TitledWindow, UpdateKind, impl_titled_window};
-use cgt::misere::{
-    dead_ending::{DeadEndingContext, DeadEndingFormContext},
-    game_form::{GameFormContext, ParseError, StandardFormContext},
+use cgt::misere::game_form::{
+    DeadEndingContext, DeadEndingFormContext, GameFormContext, ParseError, StandardFormContext,
 };
 use imgui::{Condition, ImColor32};
+use std::error::Error;
 
 #[derive(Debug, Clone)]
 struct FormInput<G> {

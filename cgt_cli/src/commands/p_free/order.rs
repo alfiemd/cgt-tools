@@ -1,12 +1,10 @@
-use std::error::Error;
-
-use cgt::misere::{
-    dead_ending::DeadEndingFormContext,
-    game_form::{ConstructionError, GameFormContext, Outcome, StandardFormContext},
-    p_free::PFreeFormContext,
+use cgt::misere::game_form::{
+    ConstructionError, DeadEndingFormContext, GameFormContext, Outcome, PFreeFormContext,
+    StandardFormContext,
 };
 use clap::ValueEnum;
 use quickcheck::Gen;
+use std::error::Error;
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Variant {
