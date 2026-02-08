@@ -5,6 +5,7 @@ use crate::{
         ConstructionError, GameFormContext, Outcome, StandardForm, StandardFormContext,
     },
     short::partizan::Player,
+    total::TotalWrappable,
 };
 use std::{error::Error, fmt};
 
@@ -45,6 +46,19 @@ impl<G> DeadEndingForm<G> {
 
     pub fn to_underlying(self) -> G {
         self.underlying
+    }
+}
+
+impl<G> TotalWrappable for DeadEndingForm<G>
+where
+    G: TotalWrappable,
+{
+    fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        TotalWrappable::total_cmp(self.underlying(), other.underlying())
+    }
+
+    fn total_hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        TotalWrappable::total_hash(self.underlying(), state);
     }
 }
 
