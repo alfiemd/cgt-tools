@@ -207,6 +207,7 @@
             pkgs.kdePackages.kcachegrind
 
             rustToolchain
+            pkgs.dot2tex
             # pkgs.wineWow64Packages.unstableFull
           ];
         };

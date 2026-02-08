@@ -1,78 +1,102 @@
+use std::{
+    collections::HashSet,
+    io::{self, BufWriter, Stdout},
+};
+
+use crate::io::FilePathOr;
 use anyhow::Result;
 use cgt::{
-    misere::game_form::{GameFormContext, StandardFormContext},
+    misere::game_form::{
+        DeadEndingFormContext, GameFormContext, PFreeDeadEndingContext, PFreeFormContext,
+        StandardFormContext,
+    },
     result::UnwrapInfallible,
-    short::partizan::Player,
+    total::{TotalWrappable, TotalWrapper},
 };
-use std::convert::Infallible;
+use itertools::Itertools;
 
 #[derive(Debug, clap::Parser)]
 pub struct Args {
     /// Day to print
     #[arg(long)]
     day: u32,
-    // TODO: Support variant
-}
 
-fn reduce<C>(context: &C, game: &C::Form) -> C::Form
-where
-    C: GameFormContext<DicoticConstructionError = Infallible>,
-{
-    let lowest_lhs = context
-        .moves(game, Player::Left)
-        .filter_map(|gl| context.to_integer(gl))
-        .min()
-        .unwrap_or(i32::MIN);
-    let highest_rhs = context
-        .moves(game, Player::Right)
-        .filter_map(|gr| context.to_integer(gr))
-        .max()
-        .unwrap_or(i32::MAX);
-    context
-        .new(
-            context
-                .moves(game, Player::Left)
-                .filter_map(|gl| match context.to_integer(gl) {
-                    Some(gl) if gl > lowest_lhs => None,
-                    _ => Some(gl),
-                })
-                .cloned(),
-            context
-                .moves(game, Player::Right)
-                .filter_map(|gr| match context.to_integer(gr) {
-                    Some(gr) if gr < highest_rhs => None,
-                    _ => Some(gr),
-                })
-                .cloned(),
-        )
-        .unwrap_infallible()
+    #[arg(long, default_value = "-")]
+    output: FilePathOr<Stdout>,
+    // TODO: Support variant
 }
 
 fn next_day<C>(context: &C, previous_day: &[C::Form]) -> Vec<C::Form>
 where
-    C: GameFormContext<DicoticConstructionError = Infallible>,
+    C: PFreeDeadEndingContext,
+    C::Form: TotalWrappable,
 {
     let mut this_day = context
         .next_day(previous_day)
         .filter(|g| context.is_p_free(g) && context.is_dead_ending(g))
-        .map(|g| reduce(context, &g))
+        .map(|g| context.reduced(&g))
+        .dedup_by(|lhs, rhs| context.total_eq(lhs, rhs))
+        .map(TotalWrapper::new)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(TotalWrapper::get)
         .collect::<Vec<_>>();
     this_day.sort_unstable_by(|lhs, rhs| context.total_cmp(lhs, rhs));
-    this_day.dedup_by(|lhs, rhs| context.total_eq(lhs, rhs));
     this_day
+}
+
+fn generate_hasse<C, W>(context: &C, mut w: W, day: &[C::Form]) -> io::Result<()>
+where
+    C: PFreeDeadEndingContext,
+    W: io::Write,
+{
+    writeln!(w, "graph Hasse {{")?;
+    writeln!(w, "  rankdir=BT;")?;
+
+    for i in 0..day.len() {
+        writeln!(
+            w,
+            "  {} [label = \"{}\", texlbl = \"${}$\"]",
+            i,
+            context.display(&day[i]),
+            context.display_tex(&day[i]),
+        )?;
+
+        'inner: for j in 0..day.len() {
+            if i == j || !context.ge_mod_p_free_dead_ending(&day[j], &day[i]) {
+                continue;
+            }
+
+            for k in 0..day.len() {
+                if k == i || k == j {
+                    continue;
+                }
+
+                if context.ge_mod_p_free_dead_ending(&day[j], &day[k])
+                    && context.ge_mod_p_free_dead_ending(&day[k], &day[i])
+                {
+                    continue 'inner;
+                }
+            }
+
+            writeln!(w, "  {} -- {};", i, j)?;
+        }
+    }
+
+    writeln!(w, "}}")
 }
 
 #[allow(clippy::needless_pass_by_value, clippy::unnecessary_wraps)]
 pub fn run(args: Args) -> Result<()> {
-    let context = StandardFormContext;
+    let mut output = BufWriter::new(args.output.create()?);
+
+    let context = PFreeFormContext::new(DeadEndingFormContext::new(StandardFormContext));
     let mut day = vec![context.new_integer(0).unwrap_infallible()];
     for _ in 0..args.day {
         day = next_day(&context, &day);
     }
 
-    for g in day {
-        println!("{g}");
-    }
+    generate_hasse(&context, &mut output, &day)?;
 
     Ok(())
 }
