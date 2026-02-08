@@ -2,8 +2,8 @@
 
 use crate::{
     misere::game_form::{
-        ConstructionError, DeadEndingForm, DeadEndingFormContext, GameFormContext, Outcome,
-        StandardForm, StandardFormContext,
+        ConstructionError, DeadEndingContext, DeadEndingForm, DeadEndingFormContext,
+        GameFormContext, Outcome, StandardForm, StandardFormContext,
     },
     result::UnwrapInfallible,
     short::partizan::Player,
@@ -281,6 +281,11 @@ where
 
 impl<C> PFreeContext for PFreeFormContext<C> where
     C: GameFormContext<IntegerConstructionError = Infallible>
+{
+}
+
+impl<C> DeadEndingContext for PFreeFormContext<C> where
+    C: DeadEndingContext<IntegerConstructionError = Infallible>
 {
 }
 
