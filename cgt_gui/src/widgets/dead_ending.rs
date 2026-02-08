@@ -3,12 +3,13 @@ use cgt::misere::game_form::{
     DeadEndingContext, DeadEndingFormContext, GameFormContext, ParseError, StandardFormContext,
 };
 use imgui::{Condition, ImColor32};
-use std::error::Error;
+use std::{error::Error, fmt::Write};
 
 #[derive(Debug, Clone)]
 struct FormInput<G> {
     form: Result<G, String>,
     value_input: String,
+    scratch_buffer: String,
 }
 
 impl<G> FormInput<G> {
@@ -20,6 +21,7 @@ impl<G> FormInput<G> {
         Self {
             form: Ok(form),
             value_input: String::from("0"),
+            scratch_buffer: String::with_capacity(32),
         }
     }
 
@@ -34,8 +36,21 @@ impl<G> FormInput<G> {
                 .map_err(|err| err.to_string());
         }
 
-        if let Err(err) = &self.form {
-            ui.text_colored(ImColor32::from_rgb(0xdd, 0x00, 0x00).to_rgba_f32s(), err);
+        match &self.form {
+            Ok(g) => {
+                write!(
+                    self.scratch_buffer,
+                    "P-Free {}: {}",
+                    context.display(g),
+                    context.is_p_free(g),
+                )
+                .unwrap();
+                ui.text(&self.scratch_buffer);
+                self.scratch_buffer.clear();
+            }
+            Err(err) => {
+                ui.text_colored(ImColor32::from_rgb(0xdd, 0x00, 0x00).to_rgba_f32s(), err);
+            }
         }
     }
 }
@@ -74,8 +89,6 @@ impl IsCgtWindow for TitledWindow<DeadEndingWindow> {
             .menu_bar(true)
             .opened(&mut self.is_open)
             .build(|| {
-                use std::fmt::Write;
-
                 if let Some(_menu_bar) = ui.begin_menu_bar() {
                     if let Some(_new_menu) = ui.begin_menu("New") {
                         if ui.menu_item("Duplicate") {
