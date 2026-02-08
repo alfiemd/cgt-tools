@@ -1,15 +1,21 @@
+//! Create wrappers over references
+
+/// Create a wrapper type
+///
+/// # Example
+/// See test below
 macro_rules! impl_ref_wrapper {
     ( $(#[$attr:meta])*
       $struct_vis:vis struct $wrapper:ident {
           $(#[$field_attr:meta])*
-              $field_vis:vis $field:ident: $inner:ty $(,)?
+          $field_vis:vis $field:ident: $inner:ty $(,)?
       }
     ) => {
         $(#[$attr])*
-            #[repr(transparent)]
+        #[repr(transparent)]
         $struct_vis struct $wrapper {
             $(#[$field_attr])*
-                $field: $inner,
+            $field: $inner,
         }
 
         impl $wrapper {
@@ -49,3 +55,17 @@ macro_rules! impl_ref_wrapper {
 }
 
 pub(crate) use impl_ref_wrapper;
+
+#[test]
+fn example() {
+    // Cannot really write doctests for macros
+
+    impl_ref_wrapper! {
+        struct Key {
+            raw_data: [u8],
+        }
+    }
+
+    let raw_data: &[u8] = b"hunter2";
+    let _key: &Key = Key::from_inner(raw_data); // Zero cost
+}
