@@ -5,7 +5,7 @@ use crate::{
         ConstructionError, DeadEndingContext, DeadEndingForm, DeadEndingFormContext,
         GameFormContext, Outcome, StandardForm, StandardFormContext,
     },
-    result::UnwrapInfallible,
+    result::{UnwrapInfallible, Void},
     short::partizan::Player,
     total::TotalWrappable,
 };
@@ -64,7 +64,10 @@ where
     }
 }
 
-pub trait PFreeContext: GameFormContext<IntegerConstructionError = Infallible> {
+pub trait PFreeContext: GameFormContext
+where
+    Self::IntegerConstructionError: Void,
+{
     // FIXME: Use base forms instead of unwraps
 
     fn tipping_point(&self, game: &Self::Form, player: Player) -> u32 {

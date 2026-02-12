@@ -7,10 +7,10 @@ use crate::io::FilePathOr;
 use anyhow::Result;
 use cgt::{
     misere::game_form::{
-        DeadEndingFormContext, GameFormContext, PFreeDeadEndingContext, PFreeFormContext,
-        StandardFormContext,
+        DeadEndingFormContext, GameFormContext, PFreeDeadEndingContext, PFreeDeadEndingFormContext,
+        PFreeFormContext, StandardFormContext,
     },
-    result::UnwrapInfallible,
+    result::{UnwrapInfallible, Void},
     total::{TotalWrappable, TotalWrapper},
 };
 use itertools::Itertools;
@@ -29,6 +29,7 @@ pub struct Args {
 fn next_day<C>(context: &C, previous_day: &[C::Form]) -> Vec<C::Form>
 where
     C: PFreeDeadEndingContext,
+    C::IntegerConstructionError: Void,
     C::Form: TotalWrappable,
 {
     let mut this_day = context
@@ -48,6 +49,7 @@ where
 fn generate_hasse<C, W>(context: &C, mut w: W, day: &[C::Form]) -> io::Result<()>
 where
     C: PFreeDeadEndingContext,
+    C::IntegerConstructionError: Void,
     W: io::Write,
 {
     writeln!(w, "graph Hasse {{")?;
@@ -90,7 +92,9 @@ where
 pub fn run(args: Args) -> Result<()> {
     let mut output = BufWriter::new(args.output.create()?);
 
-    let context = PFreeFormContext::new(DeadEndingFormContext::new(StandardFormContext));
+    let context = PFreeDeadEndingFormContext::new(PFreeFormContext::new(
+        DeadEndingFormContext::new(StandardFormContext),
+    ));
     let mut day = vec![context.new_integer(0).unwrap_infallible()];
     for _ in 0..args.day {
         day = next_day(&context, &day);

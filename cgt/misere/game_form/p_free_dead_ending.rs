@@ -1,11 +1,17 @@
 #![allow(missing_docs)]
 
 use crate::{
-    misere::game_form::{DeadEndingContext, PFreeContext},
+    misere::game_form::{ConstructionError, DeadEndingContext, GameFormContext, PFreeContext},
+    result::Void,
     short::partizan::Player,
+    total::TotalWrappable,
 };
+use std::{error::Error, fmt};
 
-pub trait PFreeDeadEndingContext: DeadEndingContext + PFreeContext {
+pub trait PFreeDeadEndingContext: DeadEndingContext + PFreeContext
+where
+    Self::IntegerConstructionError: Void,
+{
     fn ge_mod_p_free_dead_ending(&self, g: &Self::Form, h: &Self::Form) -> bool {
         if let Some(g) = self.to_integer(g)
             && let Some(h) = self.to_integer(h)
@@ -84,21 +90,218 @@ pub trait PFreeDeadEndingContext: DeadEndingContext + PFreeContext {
     }
 }
 
-impl<C> PFreeDeadEndingContext for C where C: DeadEndingContext + PFreeContext {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PFreeDeadEndingFormContext<C> {
+    context: C,
+}
+
+impl<C> PFreeDeadEndingFormContext<C> {
+    pub fn new(context: C) -> Self {
+        Self { context }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct PFreeDeadEndingForm<G> {
+    underlying: G,
+}
+
+impl<G> PFreeDeadEndingForm<G> {
+    pub(crate) const fn new_unchecked(underlying: G) -> PFreeDeadEndingForm<G> {
+        PFreeDeadEndingForm { underlying }
+    }
+
+    pub(crate) const fn new_ref_unchecked(underlying: &G) -> &PFreeDeadEndingForm<G> {
+        // SAFETY: We are #[repr(transparent)] so reference cast is safe
+        unsafe { &*(::std::ptr::from_ref(underlying).cast::<Self>()) }
+    }
+
+    pub const fn underlying(&self) -> &G {
+        &self.underlying
+    }
+
+    pub fn to_underlying(self) -> G {
+        self.underlying
+    }
+}
+
+impl<G> TotalWrappable for PFreeDeadEndingForm<G>
+where
+    G: TotalWrappable,
+{
+    fn total_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.underlying.total_cmp(&other.underlying)
+    }
+
+    fn total_hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.underlying.total_hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PFreeDeadEndingConstructionError<E> {
+    Underlying(E),
+}
+
+impl<E> std::fmt::Display for PFreeDeadEndingConstructionError<E>
+where
+    E: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PFreeDeadEndingConstructionError::Underlying(err) => {
+                write!(f, "could not construct the underlying form: {}", err)
+            }
+        }
+    }
+}
+
+impl<E> Error for PFreeDeadEndingConstructionError<E>
+where
+    E: std::fmt::Debug + Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            PFreeDeadEndingConstructionError::Underlying(err) => Some(err),
+        }
+    }
+}
+
+impl<E, G> ConstructionError<G> for PFreeDeadEndingConstructionError<E>
+where
+    E: ConstructionError<G>,
+{
+    fn recover(self) -> G {
+        match self {
+            PFreeDeadEndingConstructionError::Underlying(err) => err.recover(),
+        }
+    }
+}
+
+impl<E> Void for PFreeDeadEndingConstructionError<E>
+where
+    E: Void,
+{
+    fn absurd<T>(self) -> T {
+        match self {
+            PFreeDeadEndingConstructionError::Underlying(err) => err.absurd(),
+        }
+    }
+}
+
+impl<C> GameFormContext for PFreeDeadEndingFormContext<C>
+where
+    C: GameFormContext,
+{
+    type Form = PFreeDeadEndingForm<C::Form>;
+
+    type BaseForm = C::BaseForm;
+
+    type DicoticConstructionError = PFreeDeadEndingConstructionError<C::DicoticConstructionError>;
+
+    type IntegerConstructionError = PFreeDeadEndingConstructionError<C::IntegerConstructionError>;
+
+    type ConjugateConstructionError =
+        PFreeDeadEndingConstructionError<C::ConjugateConstructionError>;
+
+    type SumConstructionError = PFreeDeadEndingConstructionError<C::SumConstructionError>;
+
+    fn new(
+        &self,
+        left: impl IntoIterator<Item = Self::Form>,
+        right: impl IntoIterator<Item = Self::Form>,
+    ) -> Result<Self::Form, Self::DicoticConstructionError> {
+        self.context
+            .new(
+                left.into_iter().map(|g| g.underlying),
+                right.into_iter().map(|g| g.underlying),
+            )
+            .map(PFreeDeadEndingForm::new_unchecked)
+            .map_err(PFreeDeadEndingConstructionError::Underlying)
+    }
+
+    fn moves<'a>(
+        &self,
+        game: &'a Self::Form,
+        player: Player,
+    ) -> impl Iterator<Item = &'a Self::Form> {
+        self.context
+            .moves(&game.underlying, player)
+            .map(PFreeDeadEndingForm::new_ref_unchecked)
+    }
+
+    fn total_cmp(&self, lhs: &Self::Form, rhs: &Self::Form) -> std::cmp::Ordering {
+        self.context.total_cmp(&lhs.underlying, &rhs.underlying)
+    }
+
+    fn total_eq(&self, lhs: &Self::Form, rhs: &Self::Form) -> bool {
+        self.context.total_eq(&lhs.underlying, &rhs.underlying)
+    }
+
+    fn base(&self, game: Self::Form) -> Self::BaseForm {
+        self.context.base(game.underlying)
+    }
+
+    fn base_context(&self) -> &impl GameFormContext<Form = Self::BaseForm> {
+        self.context.base_context()
+    }
+}
+
+impl<C> PFreeContext for PFreeDeadEndingFormContext<C>
+where
+    C: PFreeContext,
+    C::IntegerConstructionError: Void,
+{
+}
+
+impl<C> DeadEndingContext for PFreeDeadEndingFormContext<C>
+where
+    C: DeadEndingContext + PFreeContext,
+    C::IntegerConstructionError: Void,
+{
+    fn satisfy_maintenance(&self, g: &Self::Form, h: &Self::Form) -> bool {
+        let a = self.moves(g, Player::Right).all(|gr| {
+            self.moves(gr, Player::Left)
+                .any(|grl| self.ge_mod_p_free_dead_ending(grl, h))
+                || self
+                    .moves(h, Player::Right)
+                    .any(|hr| self.ge_mod_p_free_dead_ending(gr, hr))
+        });
+        let b = self.moves(h, Player::Left).all(|hl| {
+            self.moves(hl, Player::Right)
+                .any(|hlr| self.ge_mod_p_free_dead_ending(g, hlr))
+                || self
+                    .moves(g, Player::Left)
+                    .any(|gl| self.ge_mod_p_free_dead_ending(gl, hl))
+        });
+
+        a && b
+    }
+}
+
+impl<C> PFreeDeadEndingContext for PFreeDeadEndingFormContext<C>
+where
+    C: DeadEndingContext + PFreeContext,
+    C::IntegerConstructionError: Void,
+{
+}
 
 #[cfg(test)]
 mod tests {
     use crate::{
         misere::game_form::{
             DeadEndingContext, DeadEndingFormContext, GameFormContext, PFreeDeadEndingContext,
-            PFreeFormContext, StandardFormContext,
+            PFreeDeadEndingFormContext, PFreeFormContext, StandardFormContext,
         },
         total::TotalWrappable,
     };
 
     #[test]
     fn relations() {
-        let context = PFreeFormContext::new(DeadEndingFormContext::new(StandardFormContext));
+        let context = PFreeDeadEndingFormContext::new(PFreeFormContext::new(
+            DeadEndingFormContext::new(StandardFormContext),
+        ));
 
         let g = context.from_str("0").unwrap();
         let h = context.from_str("1").unwrap();
@@ -108,11 +311,17 @@ mod tests {
         let g = context.from_str("{1|3}").unwrap();
         let h = context.from_str("2").unwrap();
         assert!(context.eq_mod_p_free_dead_ending(&g, &h));
+
+        let g = context.from_str("{-2|1}").unwrap();
+        let h = context.from_str("{-2|2}").unwrap();
+        assert!(context.ge_mod_p_free_dead_ending(&g, &h));
     }
 
     #[test]
     fn reductions() {
-        let context = PFreeFormContext::new(DeadEndingFormContext::new(StandardFormContext));
+        let context = PFreeDeadEndingFormContext::new(PFreeFormContext::new(
+            DeadEndingFormContext::new(StandardFormContext),
+        ));
 
         let g = context.reduced(&context.from_str("{0,1|3}").unwrap());
         let h = context.from_str("{0|3}").unwrap();

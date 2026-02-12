@@ -11,7 +11,10 @@ pub use dead_ending::{
     DeadEndingConstructionError, DeadEndingContext, DeadEndingForm, DeadEndingFormContext,
 };
 pub use p_free::{PFreeConstructionError, PFreeContext, PFreeForm, PFreeFormContext};
-pub use p_free_dead_ending::PFreeDeadEndingContext;
+pub use p_free_dead_ending::{
+    PFreeDeadEndingConstructionError, PFreeDeadEndingContext, PFreeDeadEndingForm,
+    PFreeDeadEndingFormContext,
+};
 pub use standard::{StandardForm, StandardFormContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
