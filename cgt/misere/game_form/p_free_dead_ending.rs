@@ -315,6 +315,18 @@ mod tests {
         let g = context.from_str("{-2|1}").unwrap();
         let h = context.from_str("{-2|2}").unwrap();
         assert!(context.ge_mod_p_free_dead_ending(&g, &h));
+
+        let g = context.from_str("{0,{-2|2}|1}").unwrap();
+        let h = context.from_str("{0|1}").unwrap();
+        assert!(context.eq_mod_p_free_dead_ending(&g, &h));
+
+        let g = context.from_str("{0,{-2|2}|2}").unwrap();
+        let h = context.from_str("{0|2}").unwrap();
+        assert!(context.eq_mod_p_free_dead_ending(&g, &h));
+
+        let g = context.from_str("{0,{-2|2},{-3|3}|2}").unwrap();
+        let h = context.from_str("{0|2}").unwrap();
+        assert!(context.eq_mod_p_free_dead_ending(&g, &h));
     }
 
     #[test]

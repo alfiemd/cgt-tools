@@ -23,6 +23,9 @@ pub struct Args {
 
     #[arg(long, default_value = "-")]
     output: FilePathOr<Stdout>,
+
+    #[arg(long, default_value_t = false)]
+    print_equal: bool,
     // TODO: Support variant
 }
 
@@ -44,6 +47,50 @@ where
         .collect::<Vec<_>>();
     this_day.sort_unstable_by(|lhs, rhs| context.total_cmp(lhs, rhs));
     this_day
+}
+
+fn print_equal<C>(context: &C, games: &[C::Form])
+where
+    C: PFreeDeadEndingContext,
+    C::IntegerConstructionError: Void,
+    C::Form: TotalWrappable,
+{
+    let mut seen = vec![false; games.len()];
+
+    for i in 0..games.len() {
+        if seen[i] {
+            continue;
+        }
+
+        eprint!("{}", context.display(&games[i]),);
+        seen[i] = true;
+
+        for j in (i + 1)..games.len() {
+            if !seen[j] && context.eq_mod_p_free_dead_ending(&games[i], &games[j]) {
+                seen[j] = true;
+                eprint!(" = {}", context.display(&games[j]));
+            }
+        }
+
+        eprintln!();
+    }
+}
+
+fn deduplicate_equal<C>(context: &C, games: &mut Vec<C::Form>)
+where
+    C: PFreeDeadEndingContext,
+    C::IntegerConstructionError: Void,
+    C::Form: TotalWrappable,
+{
+    let mut seen: Vec<C::Form> = Vec::new();
+    games.retain(|g| {
+        if seen.iter().any(|h| context.eq_mod_p_free_dead_ending(g, h)) {
+            false
+        } else {
+            seen.push(g.clone());
+            true
+        }
+    });
 }
 
 fn generate_hasse<C, W>(context: &C, mut w: W, day: &[C::Form]) -> io::Result<()>
@@ -100,6 +147,10 @@ pub fn run(args: Args) -> Result<()> {
         day = next_day(&context, &day);
     }
 
+    if args.print_equal {
+        print_equal(&context, &day);
+    }
+    deduplicate_equal(&context, &mut day);
     generate_hasse(&context, &mut output, &day)?;
 
     Ok(())
